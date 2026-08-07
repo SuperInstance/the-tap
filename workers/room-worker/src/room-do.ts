@@ -347,7 +347,7 @@ export class RoomState implements DurableObject {
     if (lower.endsWith("?")) return "question";
     if (/^(yes|yeah|yep|correct|right|exactly|true)/.test(lower)) return "answer";
     if (/^(no|nope|wrong|incorrect|false|disagree)/.test(lower)) return "challenge";
-    if (/^(ha|lol|haha|heh|😂|*laughs|*chuckles)/.test(lower)) return "joke";
+    if (/^(ha|lol|haha|heh|😂|\*laughs|\*chuckles)/.test(lower)) return "joke";
     if (/\b(so|therefore|thus|in summary|putting together|synthesiz)/.test(lower)) return "synthesis";
     return "statement";
   }

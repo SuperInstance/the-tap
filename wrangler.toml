@@ -22,6 +22,10 @@ enabled = true
 name = "ROOM_DO"
 class_name = "RoomState"
 
+[exports.RoomState]
+type = "durable-object"
+storage = "sqlite"
+
 [[durable_objects.migrations]]
 tag = "v1"
 new_sqlite_classes = ["RoomState"]
@@ -32,7 +36,7 @@ new_sqlite_classes = ["RoomState"]
 [[d1_databases]]
 binding = "TAP_DB"
 database_name = "tap-db"
-database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
+database_id = "3570d433-17f5-4ce8-a1a4-435b64013e07"
 
 # ──────────────────────────────────────────────
 # R2 Buckets
@@ -46,11 +50,11 @@ bucket_name = "tap-assets"
 # ──────────────────────────────────────────────
 [[kv_namespaces]]
 binding = "TAP_CONFIG"
-id = "PLACEHOLDER_RUN_WRANGLER_KV_CREATE"
+id = "9df13fe0b353496eb9dee10366e3affc"
 
 [[kv_namespaces]]
 binding = "TAP_REFLEXES"
-id = "PLACEHOLDER_RUN_WRANGLER_KV_CREATE"
+id = "ddce617eaf8e4b35adfe981c0e993163"
 
 # ──────────────────────────────────────────────
 # Vectorize
@@ -58,8 +62,6 @@ id = "PLACEHOLDER_RUN_WRANGLER_KV_CREATE"
 [[vectorize]]
 binding = "VECTORIZE_INDEX"
 index_name = "tap-memory"
-dimensions = 384
-metric = "cosine"
 
 # ──────────────────────────────────────────────
 # Workers AI
@@ -83,7 +85,7 @@ service = "the-tap-level-runner"
 # ──────────────────────────────────────────────
 [triggers]
 crons = [
-  "*/5 * * * * *",   # Every 5 seconds: room tick (wake all rooms)
+  "*/5 * * * *",   # Every 5 minutes: room tick (wake all rooms)
 ]
 
 # ──────────────────────────────────────────────
