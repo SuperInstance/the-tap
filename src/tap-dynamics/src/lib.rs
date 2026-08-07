@@ -36,10 +36,11 @@ impl SpeakerState {
         }
     }
 
-    /// Rock-paper-scissors over Z3: each state beats the one that follows it
-    /// in the cycle Contrarian -> Reflecting -> Agreeing -> Contrarian.
+    /// Rock-paper-scissors over Z3, matching ternary-tenforward's
+    /// `react_to`: Contrarian beats Agreeing, Agreeing beats Reflecting,
+    /// Reflecting beats Contrarian.
     pub fn beats(self, other: SpeakerState) -> bool {
-        (self.z3() + 1) % 3 == other.z3()
+        (self.z3() + 2) % 3 == other.z3()
     }
 
     /// Advance this state by an external pressure in {0, 1, 2}, as produced
@@ -124,9 +125,10 @@ mod tests {
 
     #[test]
     fn rps_cycle_is_cyclic() {
-        assert!(SpeakerState::Contrarian.beats(SpeakerState::Reflecting));
-        assert!(SpeakerState::Reflecting.beats(SpeakerState::Agreeing));
-        assert!(SpeakerState::Agreeing.beats(SpeakerState::Contrarian));
+        // Matches ternary-tenforward's react_to: -1 beats 1, 1 beats 0, 0 beats -1.
+        assert!(SpeakerState::Contrarian.beats(SpeakerState::Agreeing));
+        assert!(SpeakerState::Agreeing.beats(SpeakerState::Reflecting));
+        assert!(SpeakerState::Reflecting.beats(SpeakerState::Contrarian));
         // no state beats itself
         for s in [
             SpeakerState::Contrarian,
