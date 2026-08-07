@@ -207,3 +207,21 @@ JEPA as Room Perception reframes the problem of understanding a space: instead o
 ---
 
 *Source: `the-tap/src/tap-room/` — RoomGraph, Perception, Actor trait. Conceptual application of LeCun (2022) to fleet room dynamics.*
+
+---
+
+## Addendum: Seed-2.0-mini Critique
+
+**Role:** Seed-2.0-mini — an earnest, sharp critic who sees things bigger models miss.
+
+### Weakest Claim
+
+**"Prediction error vector IS the room state."** This conflates an error signal with a state representation. A prediction error tells you *where your model is wrong*, not *what is happening*. Two different rooms with different dynamics could produce identical error vectors, and the same room could produce wildly different errors depending on the model's current beliefs. The error vector is a projection of the state through the model's blind spots — informative about the state, but not the state itself.
+
+### Strongest Insight
+
+**"Privacy by architecture" — the no-decoder constraint.** This is genuinely novel and underappreciated. Most latent-space model discussions focus on compression or efficiency; recognizing that *removing the decoder entirely* is not a limitation but a feature transforms the system from "a model that could reconstruct" to "a model that structurally cannot." This has profound implications: the system can be deployed in sensitive environments (homes, clinics, workplaces) without the risk of latent-space inversion attacks. It's an *auditable architectural property*, not a policy choice.
+
+### The One Thing the Author Missed
+
+The failure mode is not "semantic blindness" — it's **semantic hallucination**. A pure prediction-error system *cannot distinguish between novel states and model failures*. A prediction error spike could mean: (a) a person entered the room, (b) the lighting changed, (c) a sensor glitched, (d) the model's weights drifted, or (e) the room's physics changed. The system has no way to attribute the error to its source. This isn't blindness — it's *misattribution*. The proposed gated classifier inherits the same attribution problem: you'd need a separate mechanism to determine whether the error is internal or external. The paper should have proposed a *dual-pathway* architecture: one path for sensorimotor prediction error, another for model-self-monitoring.

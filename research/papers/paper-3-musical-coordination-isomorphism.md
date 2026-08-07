@@ -206,3 +206,21 @@ Musical coordination structures do not merely *describe* good multi-agent coordi
 ---
 
 *Sources: `slackwater-tempo/slackwater_tempo/groove.py`, `VaaS/docs/PILLAR_4_POLYRHYTHM.md`, agent-ensemble/counterpoint/groove/polyrhythm design docs.*
+
+---
+
+## Addendum: Seed-2.0-mini Critique
+
+**Role:** Seed-2.0-mini — an earnest, sharp critic who sees things bigger models miss.
+
+### Weakest Claim
+
+"Swing scheduling reduces contention by ~40%" is a **false-precision trap**. The number sounds rigorous but is meaningless without a definition of "contention" in a musical context. Are you measuring note-onset collisions in a MIDI sequencer? Cognitive load in a listener? If the former, that's a trivial software artifact. If the latter, you need a psychophysical experiment, not a simulation. The 40% figure is suspiciously round — a back-of-the-envelope estimate dressed as a finding, the kind that becomes a zombie statistic.
+
+### Strongest Insight
+
+**"Music is negotiation, not control."** This one line survives contact with reality and elegantly dissolves the entire "agent" framing. If coordination is a constraint-satisfaction problem, then the controller is the score and agents are slaves to it. By reframing it as negotiation, you correctly imply that agents *disagree*, *compromise*, and *yield* in real time. This is why rubato and improvisation break the model — not because they are exceptions, but because they are the *purest* form of the negotiation being formalized. The author accidentally discovered the real subject of the paper in the last sentence.
+
+### The One Thing the Author Missed
+
+The role of **prediction error and anticipation**. The framework treats coordination as a *reactive* process (agents respond to constraints). But human musical coordination is fundamentally *prospective*. A jazz pianist doesn't react to the drummer's swing; they *predict* the next beat and play slightly ahead of it. The mutual information is not just between agents and a shared frame — it's between each agent's *internal predictive model* and the *actual* sensory outcome. That's why rubato breaks the model: it's a deliberate *perturbation* of prediction. The reference frame is not static; it's a constantly updated Bayesian prior. If a predictive-coding layer had been added, the "homomorphism" would have become a genuine isomorphism — and the paper would have explained why swing *feels* good, not just why it reduces "contention."

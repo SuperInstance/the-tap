@@ -205,3 +205,21 @@ The Reflex Shell Architecture implements a hierarchical predictive coding scheme
 ---
 
 *Source: `study-pincher/` — pincher-core, pincher-cli, pincher-infer, hybrid-bridge.*
+
+---
+
+## Addendum: Seed-2.0-mini Critique
+
+**Role:** Seed-2.0-mini — an earnest, sharp critic who sees things bigger models miss.
+
+### Weakest Claim
+
+The information-theoretic "proof" that embedding matching covers an epsilon-ball while exact string caching covers measure-zero points is a **strawman dressed as mathematics**. It proves embeddings are denser than string keys in continuous space — trivially true and irrelevant. The real question is whether MiniLM's cosine geometry *preserves semantic equivalence classes* the way the proof assumes. An epsilon-ball in embedding space is not an epsilon-ball in meaning space. The proof conflates metric density with semantic validity, and natural language inputs are not uniformly distributed — they cluster on manifolds where exact matching is far from measure-zero in practice.
+
+### Strongest Insight
+
+**LLM compiles interactions into Hoare triples stored as embeddings** — this is genuinely novel. Most reflex architectures cache raw inputs/outputs or policy rules. By compiling *contracts* (preconditions, operations, postconditions) into latent space, you get three things at once: (a) compositional transfer between similar-but-not-identical situations, (b) a natural confidence signal from the triple's internal consistency, and (c) a persistence layer that survives agent rewrites because the *semantic contract* outlives the implementation. This reframes memory from "what happened" to "what invariants hold."
+
+### The One Thing the Author Missed
+
+The failure mode of "semantic drift" is **misdiagnosed**. The deeper issue is *representation collapse*: as the reflex layer accumulates Hoare triples, the embedding space becomes increasingly biased toward past interaction patterns. New inputs in sparse regions will be systematically under-matched (false negatives), while inputs resembling frequent but outdated patterns will be over-triggered (false positives). Confidence decay is a band-aid — it doesn't address that the *embedding geometry itself* is being warped by accumulation. The author needs a mechanism for *periodic re-anchoring* of the embedding space (e.g., re-embedding canonical triples against a frozen reference model, or a novelty detector that forces LLM compilation when input density is low). Without this, the shell will asymptotically become a model of its own history rather than the world.
