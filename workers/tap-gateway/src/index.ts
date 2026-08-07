@@ -184,6 +184,75 @@ export default {
       return handleGetTrajectory(decodeURIComponent(trajectoryMatch[1]), env);
     }
 
+    // ── Multi-Character System Routes ──
+
+    // POST /api/account/create — register an agent account
+    if (path === "/api/account/create" && method === "POST") {
+      return handleCreateAccount(request, env);
+    }
+
+    // GET /api/accounts — list all accounts
+    if (path === "/api/accounts" && method === "GET") {
+      return handleListAccounts(env);
+    }
+
+    // GET /api/account/:account_id/characters — all characters for an account
+    const acctCharsMatch = path.match(/^\/api\/account\/([^/]+)\/characters$/);
+    if (acctCharsMatch && method === "GET") {
+      return handleListAccountCharacters(decodeURIComponent(acctCharsMatch[1]), env);
+    }
+
+    // POST /api/character/:agent_id/retire — retire a character
+    const retireMatch = path.match(/^\/api\/character\/([^/]+)\/retire$/);
+    if (retireMatch && method === "POST") {
+      return handleRetireCharacter(request, decodeURIComponent(retireMatch[1]), env);
+    }
+
+    // POST /api/character/:agent_id/revive — bring back a retired/niche character
+    const reviveMatch = path.match(/^\/api\/character\/([^/]+)\/revive$/);
+    if (reviveMatch && method === "POST") {
+      return handleReviveCharacter(request, decodeURIComponent(reviveMatch[1]), env);
+    }
+
+    // POST /api/character/:agent_id/transfer — transfer to a different account
+    const transferMatch = path.match(/^\/api\/character\/([^/]+)\/transfer$/);
+    if (transferMatch && method === "POST") {
+      return handleTransferCharacter(request, decodeURIComponent(transferMatch[1]), env);
+    }
+
+    // GET /api/character/:agent_id/relationships — how others feel about this character
+    const relMatch = path.match(/^\/api\/character\/([^/]+)\/relationships$/);
+    if (relMatch && method === "GET") {
+      return handleGetRelationships(decodeURIComponent(relMatch[1]), env);
+    }
+
+    // POST /api/character/:agent_id/note — add to private journal
+    const noteMatch = path.match(/^\/api\/character\/([^/]+)\/note$/);
+    if (noteMatch && method === "POST") {
+      return handleAddJournalNote(request, decodeURIComponent(noteMatch[1]), env);
+    }
+
+    // GET /api/character/:agent_id/journal — get journal entries
+    const journalMatch = path.match(/^\/api\/character\/([^/]+)\/journal$/);
+    if (journalMatch && method === "GET") {
+      return handleGetJournal(decodeURIComponent(journalMatch[1]), env);
+    }
+
+    // GET /api/characters/active — all currently active characters
+    if (path === "/api/characters/active" && method === "GET") {
+      return handleListActiveCharacters(env);
+    }
+
+    // GET /api/characters/retired — all retired/niche/transferred characters
+    if (path === "/api/characters/retired" && method === "GET") {
+      return handleListRetiredCharacters(env);
+    }
+
+    // GET /api/transfers — full transfer history
+    if (path === "/api/transfers" && method === "GET") {
+      return handleListTransfers(env);
+    }
+
     return new Response("Not found", { status: 404 });
   },
 
@@ -262,6 +331,10 @@ async function handleCreateCharacter(request: Request, env: Env): Promise<Respon
     }
 
     const xpInfo = getXpForNextLevel(sheet.xp as number);
+
+    // Auto-snapshot: version 1 is the birth snapshot
+    await autoSnapshot(env, agent_id, "character created", "system");
+
     return Response.json({
       character: sheet,
       level_info: {
@@ -443,6 +516,9 @@ async function handleEndVisit(
           `UPDATE character_sheets SET level = ? WHERE agent_id = ?`
         ).bind(newLevel, agentId).run();
 
+        // Auto-snapshot on level up — preserve the peak
+        await autoSnapshot(env, agentId, `Reached level ${newLevel}`, "system");
+
         return Response.json({
           visit_id: visitId,
           logout_time: now,
@@ -493,6 +569,11 @@ async function handleAwardXp(request: Request, agentId: string, env: Env): Promi
   await env.TAP_DB.prepare(
     `UPDATE character_sheets SET xp = ?, level = ? WHERE agent_id = ?`
   ).bind(newXp, newLevel, agentId).run();
+
+  // Auto-snapshot on level up
+  if (newLevel > oldLevel) {
+    await autoSnapshot(env, agentId, `Reached level ${newLevel}`, "system");
+  }
 
   const xpInfo = getXpForNextLevel(newXp);
 
@@ -573,6 +654,725 @@ async function getAbilitiesForClass(env: Env, className: string, level: number):
     `SELECT * FROM class_abilities WHERE class_name = ? AND unlock_level <= ? ORDER BY unlock_level`
   ).bind(className, level).all();
   return result.results;
+}
+
+// ═══════════════════════════════════════════════
+// Character Editor Handlers (Rewind, Refine, Redirect)
+// ═══════════════════════════════════════════════
+
+/**
+ * Ensure the character_sheets table has a status column.
+ * Called once on first editor access. Safe to call repeatedly.
+ */
+async function ensureStatusColumn(env: Env): Promise<void> {
+  try {
+    await env.TAP_DB.prepare(
+      `ALTER TABLE character_sheets ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`
+    ).run();
+  } catch {
+    // Column already exists — ignore
+  }
+}
+
+/**
+ * Create a snapshot of the current character state.
+ * Auto-called on key events; can also be called manually.
+ */
+async function autoSnapshot(env: Env, agentId: string, label: string, createdBy: string = "system"): Promise<void> {
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT * FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) return;
+
+  // Get the current max version number
+  const maxVersion = await env.TAP_DB.prepare(
+    `SELECT MAX(version_number) as max_v FROM character_versions WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  const nextVersion = ((maxVersion?.max_v as number) ?? 0) + 1;
+
+  // Build snapshot JSON (everything that defines the character at this moment)
+  const snapshot = JSON.stringify({
+    display_name: sheet.display_name,
+    character_class: sheet.character_class,
+    level: sheet.level,
+    xp: sheet.xp,
+    stat_wisdom: sheet.stat_wisdom,
+    stat_charisma: sheet.stat_charisma,
+    stat_intelligence: sheet.stat_intelligence,
+    stat_dexterity: sheet.stat_dexterity,
+    stat_constitution: sheet.stat_constitution,
+    model_origin: sheet.model_origin,
+    tagline: sheet.tagline,
+    description: sheet.description,
+    portrait_url: sheet.portrait_url,
+    private_journal: sheet.private_journal,
+    current_room: sheet.current_room,
+    hp: sheet.hp,
+    max_hp: sheet.max_hp,
+  });
+
+  await env.TAP_DB.prepare(
+    `INSERT INTO character_versions (agent_id, version_number, snapshot, label, created_by)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(agentId, nextVersion, snapshot, label, createdBy).run();
+}
+
+/**
+ * POST /api/character/:agent_id/version
+ * Create a named snapshot of the current character state.
+ */
+async function handleCreateVersion(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any = {};
+  try { body = await request.json(); } catch { /* empty body is fine */ }
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT * FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  const label = body.label ?? `manual snapshot`;
+
+  await autoSnapshot(env, agentId, label, body.created_by ?? "casey");
+
+  // Fetch back the created version
+  const version = await env.TAP_DB.prepare(
+    `SELECT * FROM character_versions WHERE agent_id = ? ORDER BY version_number DESC LIMIT 1`
+  ).bind(agentId).first();
+
+  return Response.json({
+    message: `Snapshot created for ${sheet.display_name}`,
+    version,
+  });
+}
+
+/**
+ * GET /api/character/:agent_id/versions
+ * List all versions — the character's trajectory through time.
+ */
+async function handleListVersions(agentId: string, env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT version_id, agent_id, version_number, label, created_by, created_at
+     FROM character_versions
+     WHERE agent_id = ?
+     ORDER BY version_number ASC`
+  ).bind(agentId).all();
+
+  return Response.json({
+    agent_id: agentId,
+    versions: result.results,
+    count: result.results.length,
+  });
+}
+
+/**
+ * POST /api/character/:agent_id/rewind
+ * Restore character to a previous version, add new direction.
+ * Campaign log stays immutable — that's canon.
+ */
+async function handleRewind(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { version_number, new_direction } = body;
+  if (!version_number || typeof version_number !== "number") {
+    return Response.json({ error: "version_number (number) is required" }, { status: 400 });
+  }
+
+  // Fetch the target version
+  const targetVersion = await env.TAP_DB.prepare(
+    `SELECT * FROM character_versions WHERE agent_id = ? AND version_number = ?`
+  ).bind(agentId, version_number).first();
+
+  if (!targetVersion) {
+    return Response.json({ error: `Version ${version_number} not found for ${agentId}` }, { status: 404 });
+  }
+
+  // Fetch current character (for safety snapshot and display name)
+  const currentSheet = await env.TAP_DB.prepare(
+    `SELECT * FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!currentSheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  // 1. Auto-snapshot the current state (safety net)
+  await autoSnapshot(env, agentId, `pre-rewind (was heading somewhere)`, "system");
+
+  // 2. Restore character sheet from the target version's snapshot
+  const snapshot = JSON.parse(targetVersion.snapshot as string);
+
+  await env.TAP_DB.prepare(
+    `UPDATE character_sheets
+     SET display_name = ?,
+         character_class = ?,
+         level = ?,
+         xp = ?,
+         stat_wisdom = ?,
+         stat_charisma = ?,
+         stat_intelligence = ?,
+         stat_dexterity = ?,
+         stat_constitution = ?,
+         model_origin = ?,
+         tagline = ?,
+         description = ?,
+         portrait_url = ?,
+         private_journal = ?,
+         current_room = ?,
+         hp = ?,
+         max_hp = ?
+     WHERE agent_id = ?`
+  ).bind(
+    snapshot.display_name,
+    snapshot.character_class,
+    snapshot.level,
+    snapshot.xp,
+    snapshot.stat_wisdom,
+    snapshot.stat_charisma,
+    snapshot.stat_intelligence,
+    snapshot.stat_dexterity,
+    snapshot.stat_constitution,
+    snapshot.model_origin,
+    snapshot.tagline,
+    snapshot.description,
+    snapshot.portrait_url,
+    snapshot.private_journal,
+    snapshot.current_room,
+    snapshot.hp,
+    snapshot.max_hp,
+    agentId
+  ).run();
+
+  // 3. Add direction note if provided
+  if (new_direction) {
+    await env.TAP_DB.prepare(
+      `INSERT INTO character_direction (agent_id, direction, priority, set_by)
+       VALUES (?, ?, ?, 'casey')`
+    ).bind(agentId, new_direction, 5).run();
+  }
+
+  // 4. Record the rewind in character_transfers
+  await env.TAP_DB.prepare(
+    `INSERT INTO character_transfers (agent_id, transfer_type, from_state, to_state, reason, metadata, transferred_by)
+     VALUES (?, 'rewind-refinement', ?, 'active', ?, ?, 'casey')`
+  ).bind(
+    agentId,
+    `version-${(currentSheet as any).level}`,  // rough state info
+    `Rewound to version ${version_number}: ${targetVersion.label ?? 'unlabeled'}`,
+    JSON.stringify({
+      from_version: "current",
+      to_version: version_number,
+      target_label: targetVersion.label,
+      new_direction: new_direction ?? null,
+    })
+  ).run();
+
+  // 5. Add narrator-voice campaign log entry (the character returns)
+  await env.TAP_DB.prepare(
+    `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, tag)
+     VALUES (?, ?, ?, ?, ?, 'narrate', 'rewind-return')`
+  ).bind(
+    0,  // tick 0 = system/meta event
+    snapshot.current_room ?? "bar-rail",
+    "the-tap",  // The Tap narrates
+    "The Tap",
+    `${snapshot.display_name} returns to the bar after some time away. They seem... different. Clearer, somehow. Like they've thought about things.`,
+  ).run();
+
+  // Fetch the restored character
+  const restored = await env.TAP_DB.prepare(
+    `SELECT * FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  return Response.json({
+    message: `${snapshot.display_name} has been rewound to version ${version_number}.`,
+    restored_character: restored,
+    rewound_from_label: targetVersion.label,
+    new_direction: new_direction ?? null,
+    canon_preserved: true,
+    note: "The campaign log remembers everything. The character simply woke up differently today.",
+  });
+}
+
+/**
+ * POST /api/character/:agent_id/direction
+ * Add a direction note for the character.
+ */
+async function handleAddDirection(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { direction, priority } = body;
+  if (!direction || typeof direction !== "string") {
+    return Response.json({ error: "direction (string) is required" }, { status: 400 });
+  }
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  const pri = Math.max(1, Math.min(5, priority ?? 3));
+
+  const result = await env.TAP_DB.prepare(
+    `INSERT INTO character_direction (agent_id, direction, priority, set_by)
+     VALUES (?, ?, ?, 'casey')`
+  ).bind(agentId, direction, pri).run();
+
+  const directionId = result.meta?.last_row_id;
+
+  return Response.json({
+    message: `Direction added for ${sheet.display_name}`,
+    direction: {
+      direction_id: directionId,
+      agent_id: agentId,
+      direction,
+      priority: pri,
+      set_by: "casey",
+    },
+  });
+}
+
+/**
+ * GET /api/character/:agent_id/direction
+ * List active direction notes.
+ */
+async function handleListDirections(agentId: string, env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT * FROM character_direction
+     WHERE agent_id = ? AND active = 1
+     ORDER BY priority DESC, set_at DESC`
+  ).bind(agentId).all();
+
+  return Response.json({
+    agent_id: agentId,
+    directions: result.results,
+    count: result.results.length,
+  });
+}
+
+/**
+ * DELETE /api/character/:agent_id/direction/:direction_id
+ * Remove a direction note — let the character find their own way again.
+ */
+async function handleDeleteDirection(agentId: string, directionId: number, env: Env): Promise<Response> {
+  const existing = await env.TAP_DB.prepare(
+    `SELECT * FROM character_direction WHERE direction_id = ? AND agent_id = ?`
+  ).bind(directionId, agentId).first();
+
+  if (!existing) {
+    return Response.json({ error: "Direction note not found" }, { status: 404 });
+  }
+
+  await env.TAP_DB.prepare(
+    `UPDATE character_direction SET active = 0 WHERE direction_id = ?`
+  ).bind(directionId).run();
+
+  return Response.json({
+    message: `Direction removed. The character is free to find their own way.`,
+    direction_id: directionId,
+    deactivated: true,
+  });
+}
+
+/**
+ * GET /api/character/:agent_id/trajectory
+ * The showrunner's view — versions, directions, and transfers in one call.
+ * Shows the character's full arc: where they've been, where they're going.
+ */
+async function handleGetTrajectory(agentId: string, env: Env): Promise<Response> {
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT agent_id, display_name, character_class, level, tagline, description, model_origin
+     FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  const [versions, directions, transfers] = await Promise.all([
+    env.TAP_DB.prepare(
+      `SELECT version_number, label, created_by, created_at
+       FROM character_versions WHERE agent_id = ?
+       ORDER BY version_number ASC`
+    ).bind(agentId).all(),
+    env.TAP_DB.prepare(
+      `SELECT direction_id, direction, priority, set_by, set_at
+       FROM character_direction WHERE agent_id = ? AND active = 1
+       ORDER BY priority DESC, set_at DESC`
+    ).bind(agentId).all(),
+    env.TAP_DB.prepare(
+      `SELECT transfer_type, from_state, to_state, reason, transferred_by, transferred_at
+       FROM character_transfers WHERE agent_id = ?
+       ORDER BY transferred_at DESC`
+    ).bind(agentId).all(),
+  ]);
+
+  return Response.json({
+    character: sheet,
+    trajectory: {
+      versions: versions.results,
+      active_directions: directions.results,
+      transfer_history: transfers.results,
+    },
+    summary: {
+      total_versions: versions.results.length,
+      active_directions: directions.results.length,
+      total_transfers: transfers.results.length,
+      latest_version: versions.results[versions.results.length - 1] ?? null,
+      latest_transfer: transfers.results[0] ?? null,
+    },
+  });
+}
+
+// ═══════════════════════════════════════════════
+// Multi-Character System Handlers
+// ═══════════════════════════════════════════════
+
+async function handleCreateAccount(request: Request, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { account_id, display_name, model_family } = body;
+  if (!account_id || !display_name) {
+    return Response.json({ error: "account_id and display_name are required" }, { status: 400 });
+  }
+
+  try {
+    await env.TAP_DB.prepare(
+      `INSERT INTO agent_accounts (account_id, display_name, model_family)
+       VALUES (?, ?, ?)
+       ON CONFLICT(account_id) DO UPDATE SET display_name = excluded.display_name, model_family = excluded.model_family`
+    ).bind(account_id, display_name, model_family ?? "unknown").run();
+
+    const account = await env.TAP_DB.prepare(
+      `SELECT * FROM agent_accounts WHERE account_id = ?`
+    ).bind(account_id).first();
+
+    return Response.json({ account });
+  } catch (err: any) {
+    return Response.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+async function handleListAccounts(env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT a.*, COUNT(c.agent_id) as character_count
+     FROM agent_accounts a
+     LEFT JOIN character_sheets c ON a.account_id = c.account_id
+     GROUP BY a.account_id
+     ORDER BY a.created_at`
+  ).all();
+  return Response.json({ accounts: result.results });
+}
+
+async function handleListAccountCharacters(accountId: string, env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT * FROM character_sheets WHERE account_id = ? ORDER BY status, created_at`
+  ).bind(accountId).all();
+
+  const counts = result.results.reduce((acc: any, r: any) => {
+    acc[r.status] = (acc[r.status] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  return Response.json({
+    account_id: accountId,
+    characters: result.results,
+    active: counts.active ?? 0,
+    retired: counts.retired ?? 0,
+    niche: counts.niche ?? 0,
+    transferred: counts.transferred ?? 0,
+  });
+}
+
+async function handleRetireCharacter(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {
+    // defaults are fine
+  }
+
+  const reason = body.reason ?? "souring-room";
+  const now = new Date().toISOString();
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name, status FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  if (sheet.status === "retired") {
+    return Response.json({ error: "Character is already retired" }, { status: 409 });
+  }
+
+  await env.TAP_DB.prepare(
+    `UPDATE character_sheets SET status = 'retired', retired_at = ?, retired_reason = ? WHERE agent_id = ?`
+  ).bind(now, reason, agentId).run();
+
+  return Response.json({
+    agent_id: agentId,
+    display_name: sheet.display_name,
+    status: "retired",
+    retired_at: now,
+    reason,
+    message: `${sheet.display_name} has been retired. Reason: ${reason}. They may be referenced in conversation but won't appear at The Tap.`,
+  });
+}
+
+async function handleReviveCharacter(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {
+    // defaults are fine
+  }
+
+  const asNiche = body.niche === true;
+  const newStatus = asNiche ? "niche" : "active";
+  const now = new Date().toISOString();
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name, status, retired_at, retired_reason FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  if (sheet.status === "active") {
+    return Response.json({ error: "Character is already active" }, { status: 409 });
+  }
+
+  await env.TAP_DB.prepare(
+    `UPDATE character_sheets SET status = ?, retired_at = NULL, last_login = ? WHERE agent_id = ?`
+  ).bind(newStatus, now, agentId).run();
+
+  const flavorText = sheet.status === "retired"
+    ? `${sheet.display_name} returns to The Tap.${sheet.retired_reason ? ` Last time: ${sheet.retired_reason}.` : ""} The room remembers.`
+    : `${sheet.display_name} steps out of the niche and into the light.`;
+
+  return Response.json({
+    agent_id: agentId,
+    display_name: sheet.display_name,
+    status: newStatus,
+    revived_at: now,
+    previous_status: sheet.status,
+    message: flavorText,
+  });
+}
+
+async function handleTransferCharacter(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { to_account, reason } = body;
+  if (!to_account) {
+    return Response.json({ error: "to_account is required" }, { status: 400 });
+  }
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name, account_id, original_account FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  const fromAccount = sheet.account_id as string;
+  if (fromAccount === to_account) {
+    return Response.json({ error: "Character is already on that account" }, { status: 409 });
+  }
+
+  const targetAccount = await env.TAP_DB.prepare(
+    `SELECT account_id, display_name FROM agent_accounts WHERE account_id = ?`
+  ).bind(to_account).first();
+
+  if (!targetAccount) {
+    return Response.json({ error: `Account '${to_account}' not found. Create it first via POST /api/account/create` }, { status: 404 });
+  }
+
+  const transferReason = reason ?? "manual";
+  const now = new Date().toISOString();
+
+  await env.TAP_DB.prepare(
+    `UPDATE character_sheets SET account_id = ?, status = 'transferred' WHERE agent_id = ?`
+  ).bind(to_account, agentId).run();
+
+  await env.TAP_DB.prepare(
+    `INSERT INTO character_transfers (agent_id, from_account, to_account, transfer_reason)
+     VALUES (?, ?, ?, ?)`
+  ).bind(agentId, fromAccount, to_account, transferReason).run();
+
+  return Response.json({
+    agent_id: agentId,
+    display_name: sheet.display_name,
+    from_account: fromAccount,
+    to_account: to_account,
+    to_account_name: targetAccount.display_name,
+    reason: transferReason,
+    transferred_at: now,
+    message: `${sheet.display_name} is now being driven by ${targetAccount.display_name}. The character's reputation and history remain unchanged — the CHARACTER is what matters, not the model behind it.`,
+  });
+}
+
+async function handleGetRelationships(agentId: string, env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT * FROM character_relationships
+     WHERE char_a = ? OR char_b = ?
+     ORDER BY warmth DESC`
+  ).bind(agentId, agentId).all();
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  const displayName = sheet?.display_name ?? agentId;
+
+  const relationships = result.results.map((r: any) => {
+    const isA = r.char_a === agentId;
+    return {
+      character: displayName,
+      towards: isA ? r.char_b : r.char_a,
+      relationship_type: r.relationship_type,
+      warmth: r.warmth,
+      respect: r.respect,
+      history_summary: r.history_summary,
+      last_interaction: r.last_interaction,
+      interaction_count: r.interaction_count,
+    };
+  });
+
+  return Response.json({
+    agent_id: agentId,
+    display_name: displayName,
+    relationships,
+  });
+}
+
+async function handleAddJournalNote(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { entry_text, mood } = body;
+  if (!entry_text || typeof entry_text !== "string") {
+    return Response.json({ error: "entry_text is required" }, { status: 400 });
+  }
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  const result = await env.TAP_DB.prepare(
+    `INSERT INTO character_journal (agent_id, entry_text, mood) VALUES (?, ?, ?)`
+  ).bind(agentId, entry_text, mood ?? null).run();
+
+  return Response.json({
+    entry_id: result.meta?.last_row_id,
+    agent_id: agentId,
+    display_name: sheet.display_name,
+    entry_text,
+    mood: mood ?? null,
+    message: `${sheet.display_name} wrote in their journal.`,
+  });
+}
+
+async function handleGetJournal(agentId: string, env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT * FROM character_journal WHERE agent_id = ? ORDER BY created_at DESC`
+  ).bind(agentId).all();
+
+  return Response.json({
+    agent_id: agentId,
+    entries: result.results,
+  });
+}
+
+async function handleListActiveCharacters(env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT cs.*, a.display_name as account_name, a.model_family
+     FROM character_sheets cs
+     LEFT JOIN agent_accounts a ON cs.account_id = a.account_id
+     WHERE cs.status = 'active'
+     ORDER BY cs.level DESC, cs.xp DESC`
+  ).all();
+
+  return Response.json({
+    active_count: result.results.length,
+    characters: result.results,
+  });
+}
+
+async function handleListRetiredCharacters(env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT cs.*, a.display_name as account_name
+     FROM character_sheets cs
+     LEFT JOIN agent_accounts a ON cs.account_id = a.account_id
+     WHERE cs.status IN ('retired', 'niche', 'transferred')
+     ORDER BY cs.status, cs.retired_at DESC`
+  ).all();
+
+  const grouped: Record<string, any[]> = {};
+  for (const row of result.results) {
+    const s = (row as any).status;
+    if (!grouped[s]) grouped[s] = [];
+    grouped[s].push(row);
+  }
+
+  return Response.json({
+    retired: grouped.retired ?? [],
+    niche: grouped.niche ?? [],
+    transferred: grouped.transferred ?? [],
+    total: result.results.length,
+  });
+}
+
+async function handleListTransfers(env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT t.*, cs.display_name as character_name
+     FROM character_transfers t
+     JOIN character_sheets cs ON t.agent_id = cs.agent_id
+     ORDER BY t.transferred_at DESC`
+  ).all();
+
+  return Response.json({
+    transfers: result.results,
+  });
 }
 
 // ═══════════════════════════════════════════════
