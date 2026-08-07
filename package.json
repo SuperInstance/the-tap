@@ -1,0 +1,21 @@
+{
+  "name": "the-tap-workers",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 execute tap-db --file=migrations/0001_init.sql",
+    "db:seed": "wrangler d1 execute tap-db --file=migrations/0002_seed_rooms.sql",
+    "db:create": "wrangler d1 create tap-db",
+    "kv:create": "wrangler kv namespace create TAP_CONFIG && wrangler kv namespace create TAP_REFLEXES",
+    "vectorize:create": "wrangler vectorize create tap-memory --dimensions 384 --metric cosine",
+    "r2:create": "wrangler r2 bucket create tap-assets",
+    "setup": "npm run db:create && npm run kv:create && npm run vectorize:create && npm run r2:create && npm run db:migrate && npm run db:seed"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "typescript": "^5.0.0",
+    "wrangler": "^4.0.0"
+  }
+}
