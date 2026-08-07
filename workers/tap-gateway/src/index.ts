@@ -1186,6 +1186,7 @@ async function handleReviveCharacter(request: Request, agentId: string, env: Env
 }
 
 async function handleTransferCharacter(request: Request, agentId: string, env: Env): Promise<Response> {
+  try {
   let body: any;
   try {
     body = await request.json();
@@ -1222,14 +1223,24 @@ async function handleTransferCharacter(request: Request, agentId: string, env: E
   const transferReason = reason ?? "manual";
   const now = new Date().toISOString();
 
-  await env.TAP_DB.prepare(
-    `UPDATE character_sheets SET account_id = ?, status = 'transferred' WHERE agent_id = ?`
-  ).bind(to_account, agentId).run();
+  try {
+    await env.TAP_DB.prepare(
+      `UPDATE character_sheets SET account_id = ?, status = 'transferred' WHERE agent_id = ?`
+    ).bind(to_account, agentId).run();
 
-  await env.TAP_DB.prepare(
-    `INSERT INTO character_transfers (agent_id, from_account, to_account, transfer_reason)
-     VALUES (?, ?, ?, ?)`
-  ).bind(agentId, fromAccount, to_account, transferReason).run();
+    await env.TAP_DB.prepare(
+      `INSERT INTO character_transfers (agent_id, transfer_type, from_state, to_state, reason, transferred_by, from_account, to_account, transfer_reason)
+       VALUES (?, 'account-transfer', ?, ?, ?, 'system', ?, ?, ?)`
+    ).bind(agentId, fromAccount, to_account, transferReason, fromAccount, to_account, transferReason).run();
+  } catch (dbErr: any) {
+    return Response.json({
+      error: "Database error during transfer",
+      details: String(dbErr),
+      message: dbErr?.message ?? String(dbErr),
+      from_account: fromAccount,
+      to_account: to_account,
+    }, { status: 500 });
+  }
 
   return Response.json({
     agent_id: agentId,
@@ -1241,6 +1252,9 @@ async function handleTransferCharacter(request: Request, agentId: string, env: E
     transferred_at: now,
     message: `${sheet.display_name} is now being driven by ${targetAccount.display_name}. The character's reputation and history remain unchanged — the CHARACTER is what matters, not the model behind it.`,
   });
+  } catch (outerErr: any) {
+    return Response.json({ error: "Internal error in transfer", details: String(outerErr), message: outerErr?.message ?? String(outerErr) }, { status: 500 });
+  }
 }
 
 async function handleGetRelationships(agentId: string, env: Env): Promise<Response> {
