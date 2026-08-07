@@ -1,0 +1,7 @@
+[package]
+name = "tap-reflex"
+version.workspace = true
+edition.workspace = true
+description = "pincher-style <50ms reflex shell with vector matching for The Tap"
+
+[dependencies]

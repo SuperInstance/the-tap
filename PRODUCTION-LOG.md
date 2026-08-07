@@ -9,7 +9,7 @@ Fable: enters after round 10
 | Round | Specialist | Tool | Task | Status |
 |-------|-----------|------|------|--------|
 | 1 | GLM subagent | — | Architecture spec from fleet repos | 🔄 running |
-| 1 | Claude Code | Claude CLI | Core Rust workspace scaffold | 🔄 dispatched |
+| 1 | Claude Code | Claude CLI | Core Rust workspace scaffold | ✅ done — tap-room, tap-dynamics, tap-reflex; 17 tests passing |
 | 1 | KimiCode | KimiCode CLI | Spatial navigation layer | 🔄 dispatched |
 | 1 | OpenCode1 | OpenCode | DM engine | 🔄 dispatched |
 | 1 | OpenCode2 | OpenCode | Python ensemble orchestration | 🔄 dispatched |

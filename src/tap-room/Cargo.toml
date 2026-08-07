@@ -1,0 +1,8 @@
+[package]
+name = "tap-room"
+version.workspace = true
+edition.workspace = true
+description = "MUD-arena-style room graph and perceive-decide-act loop for The Tap"
+
+[dependencies]
+thiserror = "1"

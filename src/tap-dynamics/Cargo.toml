@@ -1,0 +1,7 @@
+[package]
+name = "tap-dynamics"
+version.workspace = true
+edition.workspace = true
+description = "ternary-tenforward-style Z3 speaker states with a Fibonacci-mod-3 clock"
+
+[dependencies]
