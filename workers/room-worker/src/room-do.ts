@@ -181,6 +181,23 @@ export class RoomState implements DurableObject {
         return new Response("Method not allowed", { status: 405 });
       }
 
+      case "/broadcast": {
+        if (request.method === "POST") {
+          const message = await request.json();
+          await this.broadcast(message);
+          // Also push into local conversation if it's a conversation_line
+          if (message.type === "conversation_line" && message.line) {
+            this.state.conversation.push(message.line);
+            const maxLines = parseInt(this.env.MAX_CONVERSATION_LINES ?? "200");
+            if (this.state.conversation.length > maxLines) {
+              this.state.conversation.shift();
+            }
+          }
+          return Response.json({ ok: true });
+        }
+        return new Response("Method not allowed", { status: 405 });
+      }
+
       default:
         return new Response("Not found", { status: 404 });
     }

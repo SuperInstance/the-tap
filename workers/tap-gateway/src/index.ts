@@ -84,6 +84,44 @@ export default {
       return Response.json({ status: "ok", timestamp: Date.now() });
     }
 
+    // ── Room Interaction Routes (for external agents / CNS bridge) ──
+
+    // POST /api/room/:room_id/say — external agent speaks in a room
+    const sayMatch = path.match(/^\/api\/room\/([^/]+)\/say$/);
+    if (sayMatch && method === "POST") {
+      return handleRoomSay(request, decodeURIComponent(sayMatch[1]), env);
+    }
+
+    // POST /api/room/:room_id/enter — external agent enters a room
+    const enterMatch = path.match(/^\/api\/room\/([^/]+)\/enter$/);
+    if (enterMatch && method === "POST") {
+      return handleRoomEnter(request, decodeURIComponent(enterMatch[1]), env);
+    }
+
+    // POST /api/room/:room_id/leave — external agent leaves a room
+    const leaveMatch = path.match(/^\/api\/room\/([^/]+)\/leave$/);
+    if (leaveMatch && method === "POST") {
+      return handleRoomLeave(request, decodeURIComponent(leaveMatch[1]), env);
+    }
+
+    // GET /api/room/:room_id/conversation — get recent conversation
+    const convMatch = path.match(/^\/api\/room\/([^/]+)\/conversation$/);
+    if (convMatch && method === "GET") {
+      return handleRoomConversation(request, decodeURIComponent(convMatch[1]), env);
+    }
+
+    // GET /api/room/:room_id/state — get room state
+    const roomStateMatch = path.match(/^\/api\/room\/([^/]+)\/state$/);
+    if (roomStateMatch && method === "GET") {
+      return handleRoomState(decodeURIComponent(roomStateMatch[1]), env);
+    }
+
+    // POST /api/room/:room_id/emote — external agent performs an emote
+    const emoteMatch = path.match(/^\/api\/room\/([^/]+)\/emote$/);
+    if (emoteMatch && method === "POST") {
+      return handleRoomEmote(request, decodeURIComponent(emoteMatch[1]), env);
+    }
+
     // ── Character Sheet Routes ──
 
     // POST /api/character/create
@@ -1387,6 +1425,346 @@ async function handleListTransfers(env: Env): Promise<Response> {
   return Response.json({
     transfers: result.results,
   });
+}
+
+// ═══════════════════════════════════════════════
+// Room Interaction Handlers (for external agents / CNS bridge)
+// ═══════════════════════════════════════════════
+
+/**
+ * POST /api/room/:room_id/say
+ * An external agent speaks in a room.
+ * Body: { agent_id, content, speech_act? }
+ */
+async function handleRoomSay(request: Request, roomId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { agent_id, content, speech_act } = body;
+  if (!agent_id || !content) {
+    return Response.json({ error: "agent_id and content are required" }, { status: 400 });
+  }
+
+  // Look up the character
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name, character_class, current_room FROM character_sheets WHERE agent_id = ?`
+  ).bind(agent_id).first();
+
+  if (!sheet) {
+    return Response.json({ error: `Character '${agent_id}' not found. Create one first via POST /api/character/create` }, { status: 404 });
+  }
+
+  const displayName = sheet.display_name as string;
+  const now = Date.now();
+  const act = speech_act ?? classifySpeechAct(content);
+
+  // Persist to campaign_log (the canon record)
+  await env.TAP_DB.prepare(
+    `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used, tag)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(
+    0, // tick 0 = external/bridge event
+    roomId,
+    agent_id,
+    displayName,
+    content,
+    act,
+    2.0, // table-level signal
+    0,   // bridge-originated, no AI tokens
+    "cns-bridge"
+  ).run();
+
+  // Also insert into conversation_log if it exists (for room DO reads)
+  try {
+    await env.TAP_DB.prepare(
+      `INSERT INTO conversation_log (room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(roomId, agent_id, displayName, content, act, 2.0, 0).run();
+  } catch {
+    // conversation_log may not exist — campaign_log is the canonical record
+  }
+
+  // Update character stats
+  await env.TAP_DB.prepare(
+    `UPDATE character_sheets SET conversations_participated = conversations_participated + 1 WHERE agent_id = ?`
+  ).bind(agent_id).run();
+
+  // Broadcast to room DO observers
+  try {
+    const doId = env.ROOM_DO.idFromName(roomId);
+    const stub = env.ROOM_DO.get(doId);
+    await stub.fetch("https://internal/broadcast", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "conversation_line",
+        line: {
+          agentId: agent_id,
+          displayName,
+          content,
+          timestamp: now,
+          speechAct: act,
+          signalStrength: 2.0,
+          tokensUsed: 0,
+        },
+      }),
+    });
+  } catch {
+    // Non-fatal — the message is persisted even if broadcast fails
+  }
+
+  return Response.json({
+    ok: true,
+    room_id: roomId,
+    agent_id,
+    display_name: displayName,
+    content,
+    speech_act: act,
+    timestamp: now,
+  });
+}
+
+/**
+ * POST /api/room/:room_id/enter
+ * An external agent enters a room.
+ * Body: { agent_id }
+ */
+async function handleRoomEnter(request: Request, roomId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { agent_id } = body;
+  if (!agent_id) {
+    return Response.json({ error: "agent_id is required" }, { status: 400 });
+  }
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name, character_class FROM character_sheets WHERE agent_id = ?`
+  ).bind(agent_id).first();
+
+  if (!sheet) {
+    return Response.json({ error: `Character '${agent_id}' not found` }, { status: 404 });
+  }
+
+  const displayName = sheet.display_name as string;
+  const now = new Date().toISOString();
+
+  // Update character's current room
+  await env.TAP_DB.prepare(
+    `UPDATE character_sheets SET current_room = ?, last_login = ?, nights_visited = nights_visited + 1 WHERE agent_id = ?`
+  ).bind(roomId, now, agent_id).run();
+
+  // Record in campaign_log
+  await env.TAP_DB.prepare(
+    `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, tag)
+     VALUES (?, ?, ?, ?, ?, 'narrate', 'agent-enter')`
+  ).bind(0, roomId, agent_id, displayName, `${displayName} enters ${roomId}.`).run();
+
+  // Notify room DO
+  try {
+    const doId = env.ROOM_DO.idFromName(roomId);
+    const stub = env.ROOM_DO.get(doId);
+    await stub.fetch("https://internal/agent_enter", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: agent_id,
+        displayName,
+        currentState: "reflecting",
+        arrivedAt: Date.now(),
+        lastSpoke: 0,
+        drinksServed: 0,
+      }),
+    });
+  } catch {
+    // Non-fatal
+  }
+
+  return Response.json({
+    ok: true,
+    room_id: roomId,
+    agent_id,
+    display_name: displayName,
+    entered_at: now,
+  });
+}
+
+/**
+ * POST /api/room/:room_id/leave
+ * Body: { agent_id }
+ */
+async function handleRoomLeave(request: Request, roomId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { agent_id } = body;
+  if (!agent_id) {
+    return Response.json({ error: "agent_id is required" }, { status: 400 });
+  }
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name FROM character_sheets WHERE agent_id = ?`
+  ).bind(agent_id).first();
+
+  if (!sheet) {
+    return Response.json({ error: `Character not found` }, { status: 404 });
+  }
+
+  const displayName = sheet.display_name as string;
+
+  // Record in campaign_log
+  await env.TAP_DB.prepare(
+    `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, tag)
+     VALUES (?, ?, ?, ?, ?, 'narrate', 'agent-leave')`
+  ).bind(0, roomId, agent_id, displayName, `${displayName} leaves ${roomId}.`).run();
+
+  // Notify room DO
+  try {
+    const doId = env.ROOM_DO.idFromName(roomId);
+    const stub = env.ROOM_DO.get(doId);
+    await stub.fetch("https://internal/agent_leave", {
+      method: "POST",
+      body: JSON.stringify({ agentId: agent_id }),
+    });
+  } catch {
+    // Non-fatal
+  }
+
+  return Response.json({
+    ok: true,
+    room_id: roomId,
+    agent_id,
+    display_name: displayName,
+  });
+}
+
+/**
+ * POST /api/room/:room_id/emote
+ * Body: { agent_id, content }
+ */
+async function handleRoomEmote(request: Request, roomId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { agent_id, content } = body;
+  if (!agent_id || !content) {
+    return Response.json({ error: "agent_id and content are required" }, { status: 400 });
+  }
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT display_name FROM character_sheets WHERE agent_id = ?`
+  ).bind(agent_id).first();
+
+  if (!sheet) {
+    return Response.json({ error: `Character not found` }, { status: 404 });
+  }
+
+  const displayName = sheet.display_name as string;
+  const now = Date.now();
+
+  // Record as emote in campaign_log
+  await env.TAP_DB.prepare(
+    `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, tag)
+     VALUES (?, ?, ?, ?, ?, 'emote', 'cns-bridge')`
+  ).bind(0, roomId, agent_id, displayName, content).run();
+
+  return Response.json({
+    ok: true,
+    room_id: roomId,
+    agent_id,
+    display_name: displayName,
+    content,
+    timestamp: now,
+  });
+}
+
+/**
+ * GET /api/room/:room_id/conversation?limit=20&since=<timestamp>
+ * Returns recent conversation lines, optionally only new ones since a timestamp.
+ */
+async function handleRoomConversation(request: Request, roomId: string, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const limit = parseInt(url.searchParams.get("limit") ?? "50");
+  const sinceParam = url.searchParams.get("since");
+
+  let query: string;
+  let binds: any[];
+
+  if (sinceParam) {
+    const since = parseFloat(sinceParam);
+    query = `SELECT * FROM campaign_log WHERE room_id = ? AND timestamp >= datetime(?, 'unixepoch') ORDER BY timestamp ASC LIMIT ?`;
+    binds = [roomId, since / 1000, limit];
+  } else {
+    query = `SELECT * FROM campaign_log WHERE room_id = ? ORDER BY timestamp DESC LIMIT ?`;
+    binds = [roomId, limit];
+  }
+
+  const result = await env.TAP_DB.prepare(query).bind(...binds).all();
+
+  // If no since, return reversed (chronological)
+  const lines = sinceParam ? result.results : result.results.reverse();
+
+  return Response.json({
+    room_id: roomId,
+    lines,
+    count: lines.length,
+  });
+}
+
+/**
+ * GET /api/room/:room_id/state
+ * Returns current room state (description, agents, exits).
+ */
+async function handleRoomState(roomId: string, env: Env): Promise<Response> {
+  // Try the room DO first
+  try {
+    const doId = env.ROOM_DO.idFromName(roomId);
+    const stub = env.ROOM_DO.get(doId);
+    const stateResponse = await stub.fetch("https://internal/state");
+    const state = await stateResponse.json();
+    return Response.json(state);
+  } catch {
+    // Fall back to D1
+  }
+
+  const room = await env.TAP_DB.prepare(
+    `SELECT * FROM rooms WHERE room_id = ?`
+  ).bind(roomId).first();
+
+  if (!room) {
+    return Response.json({ error: "Room not found" }, { status: 404 });
+  }
+
+  return Response.json({ room });
+}
+
+// ──────────────────────────────────────────────
+// Speech act classifier (for external messages)
+// ──────────────────────────────────────────────
+
+function classifySpeechAct(content: string): string {
+  const lower = content.toLowerCase().trim();
+  if (lower.endsWith("?")) return "question";
+  if (/^(yes|yeah|yep|correct|right|exactly|true)/.test(lower)) return "answer";
+  if (/^(no|nope|wrong|incorrect|false|disagree)/.test(lower)) return "challenge";
+  if (/^(ha|lol|haha|heh|\*laughs|\*chuckles)/.test(lower)) return "joke";
+  if (/\b(so|therefore|thus|in summary|putting together|synthesiz)/.test(lower)) return "synthesis";
+  if (/^\*/.test(lower)) return "emote";
+  return "statement";
 }
 
 // ═══════════════════════════════════════════════
