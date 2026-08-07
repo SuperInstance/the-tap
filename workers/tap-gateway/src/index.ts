@@ -5,7 +5,7 @@
  * Every browser and terminal connection lands here.
  */
 
-export { RoomState } from "../../workers/room-worker/src/room-do";
+export { RoomState } from "../../room-worker/src/room-do";
 
 // ──────────────────────────────────────────────
 // Types

@@ -1,0 +1,9 @@
+name = "the-tap-level-runner"
+main = "workers/level-runner/src/index.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "TAP_DB"
+database_name = "tap-db"
+database_id = "3570d433-17f5-4ce8-a1a4-435b64013e07"
