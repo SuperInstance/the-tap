@@ -59,6 +59,13 @@ pub enum RoomError {
     NoSuchExit(RoomId, Direction),
     #[error("agent {0} is not in room {1}")]
     AgentNotPresent(AgentId, RoomId),
+    #[error("exit {dir:?} from room {room} already leads to {existing_dest}, cannot redirect to {new_dest}")]
+    ExitConflict {
+        room: RoomId,
+        dir: Direction,
+        existing_dest: RoomId,
+        new_dest: RoomId,
+    },
 }
 
 /// Everything an agent can sense from a room, out to some hop radius.
@@ -92,6 +99,11 @@ impl RoomGraph {
 
     /// Link `from` to `to` via `dir`. Set `bidirectional` to also add the
     /// reverse exit back from `to`.
+    ///
+    /// **Warning:** If the reverse exit already exists (e.g. another room
+    /// already linked bidirectionally to `to` from the same direction),
+    /// it will be silently overwritten. Use [`link_checked`](Self::link_checked)
+    /// if you need to detect collisions.
     pub fn link(
         &mut self,
         from: RoomId,
@@ -109,6 +121,54 @@ impl RoomGraph {
             back.exits.insert(dir.opposite(), from);
         }
         Ok(())
+    }
+
+    /// Like [`link`](Self::link) but returns an error if the forward or
+    /// reverse exit already points somewhere else. This prevents the
+    /// silent-overwrite bug described in KNOWN-ISSUES.md.
+    pub fn link_checked(
+        &mut self,
+        from: RoomId,
+        dir: Direction,
+        to: RoomId,
+        bidirectional: bool,
+    ) -> Result<(), RoomError> {
+        if !self.rooms.contains_key(&to) {
+            return Err(RoomError::NoSuchRoom(to));
+        }
+        if !self.rooms.contains_key(&from) {
+            return Err(RoomError::NoSuchRoom(from));
+        }
+
+        // Check forward exit collision
+        if let Some(&existing) = self.rooms[&from].exits.get(&dir) {
+            if existing != to {
+                return Err(RoomError::ExitConflict {
+                    room: from,
+                    dir,
+                    existing_dest: existing,
+                    new_dest: to,
+                });
+            }
+        }
+
+        // Check reverse exit collision
+        if bidirectional {
+            let opp = dir.opposite();
+            if let Some(&existing) = self.rooms[&to].exits.get(&opp) {
+                if existing != from {
+                    return Err(RoomError::ExitConflict {
+                        room: to,
+                        dir: opp,
+                        existing_dest: existing,
+                        new_dest: from,
+                    });
+                }
+            }
+        }
+
+        // Safe to link — no collisions
+        self.link(from, dir, to, bidirectional)
     }
 
     pub fn place_agent(&mut self, agent: AgentId, room: RoomId) -> Result<(), RoomError> {

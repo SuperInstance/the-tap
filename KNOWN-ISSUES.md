@@ -42,10 +42,18 @@ In a tavern layout where multiple rooms connect to the same destination from the
 
 4. **Use a sub-direction or label** — `exits: HashMap<Direction, Vec<RoomId>>` and pick the closest match.
 
-## Current Status
+## Resolution
 
-**Known, documented, not yet fixed.** The integration test `agent_can_traverse_full_tavern` accounts for the actual behavior (last writer wins). Fix depends on the desired MUD semantics for The Tap.
+**Partially fixed — August 7, 2026 (afternoon watch).**
+
+Added `RoomGraph::link_checked()` — a new method that detects exit conflicts and returns `RoomError::ExitConflict` instead of silently overwriting. This implements fix option 3 (error on overwrite) from the list above.
+
+The original `link()` method retains its old behavior for backward compatibility (and for cases where clobbering is intentional). New code should prefer `link_checked()`.
+
+**4 new tests** added covering bidirectional overwrite detection, forward conflict detection, redundant-link idempotency, and multi-exit graphs without conflicts.
+
+**Remaining:** The deeper question of MUD semantics (options 1, 2, 4 — named exits, multi-exit-per-direction) is deferred until The Tap's room model is finalized. The current `link_checked` approach prevents silent data loss but doesn't solve the fundamental limitation that `HashMap<Direction, RoomId>` supports only one exit per cardinal direction.
 
 ## Priority
 
-Medium — doesn't crash, but the graph model needs to be intentional before The Tap goes live with complex room layouts.
+Low (was Medium) — silent overwrite is now preventable via `link_checked`. Semantic model decision deferred.
