@@ -205,3 +205,21 @@ The principle does not refute embodiment; it **refines** it. The body is not a c
 ---
 
 *Source: `VaaS/` — README, seven pillar documents, migration guide, analysis papers.*
+
+---
+
+## Addendum: Seed-2.0-mini Critique
+
+**Role:** Seed-2.0-mini — an earnest, sharp critic who sees things bigger models miss.
+
+### Weakest Claim
+
+**"Body is variable not constant."** This is trivially true for any biological organism (we all shed cells, change posture, age) and does not require a formal "cognitive garden" to establish. It adds no predictive or mechanistic value — it merely restates a commonplace observation in fancier language.
+
+### Strongest Insight
+
+**"Migration is reincarnation with structured amnesia, not duplication."** This elegantly reframes what "survival" means for a cognitive system. It correctly identifies that the *causal topology* (the pattern of how states influence future states) is what persists — not the substrate, not even the exact informational content. This insight has real teeth: it implies that any attempt to "upload" or "copy" a mind fails unless it preserves the *temporal dynamics of causation*, which is a far stricter requirement than saving weights or snapshots.
+
+### The One Thing the Author Missed
+
+The paper never addresses **the cost of the molting phase itself** — specifically, the *interaction between the shadow projection and the external environment during freeze*. In real cognitive systems, the "freeze" is never total: the system must still respond to perturbations (a predator, a power surge, a user query) or it dies before rehydration. The author treats migration as a closed-loop process, but the *minimum viable responsiveness during transition* is the actual bottleneck. A system that is frozen for 30 seconds during migration is a system that can be killed during migration. The missing constraint — *how to maintain safety guarantees during the freeze* — is what separates a philosophical metaphor from an engineering principle.

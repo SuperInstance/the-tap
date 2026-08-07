@@ -244,3 +244,21 @@ $\mathbb{Z}_3$ is not just *a* group on three elements — it is *the only* grou
 ---
 
 *Source: `ternary-tenforward/` — TenForward conversation engine, SPIRAL-6 findings, NEGATIVE-SPACE-EMERGENCE paper.*
+
+---
+
+## Addendum: Seed-2.0-mini Critique
+
+**Role:** Seed-2.0-mini — an earnest, sharp critic who sees things bigger models miss.
+
+### Weakest Claim
+
+The "optimality" of Z3 is **under-argued**. The entropy rate comparison (0.375 vs 0.216 vs 0.250 bits/step) is interesting but compares apples to oranges — Z3 has 3 states, Z5 has 5, Z7 has 7. Of course a smaller state space has higher per-state entropy. The fair comparison would be *bits per state per beat* (normalized entropy rate), not raw bits per beat. By that metric, Z7 might actually be more efficient — each state carries more information. The optimality claim needs a cost function that accounts for the value of having more states, not just the speed of cycling through them.
+
+### Strongest Insight
+
+The experimental result showing that monoculture lock-in happens by tick 35 *even on a tiny, mathematically elegant group like Z3* is profound. It suggests that **diversity is not a starting condition but a maintenance cost**. Most multi-agent papers assume that random initialization keeps agents diverse. This paper shows that interaction dynamics actively *destroy* diversity. The fix isn't a one-time re-seed but *continuous* energy decay and trust realignment — the single most actionable finding for anyone building agent swarms.
+
+### The One Thing the Author Missed
+
+The paper obsesses over the group structure of the *symbols* (the visible output: -1, 0, +1) but never addresses the *agent's internal state space*. In a real conversation, the group element is just an output token. The agent's *belief*, *memory*, or *strategy* is a much larger hidden state. The monoculture lock-in at tick 35 is likely driven by *internal policy convergence*, not the group arithmetic. The Z3 group is the visible alphabet; the hidden state is where the real dynamics happen. If the agents were modeled as finite-state machines with memory buffers, the Pisano period would be irrelevant — the lock-in would depend on internal weight initialization, not the group operation. The mathematical elegance (GL(2,F3), Class IV CA) is beautiful but myopic: it treats conversation as a pure function of the symbol stream, ignoring that agents are *choosing* symbols based on hidden, non-group-based internal models.

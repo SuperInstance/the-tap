@@ -315,3 +315,21 @@ The deepest insight is not technical but social: **stigmergy with perfect memory
 ---
 
 *Source: `git-native-mud/` — README, COCKPIT-MUD-DESIGN.md, ROOM-GATEWAY-ARCHITECTURE.md, BRIDGE-SCENARIOS.md, mud_engine.py, quest_engine.py.*
+
+---
+
+## Addendum: Seed-2.0-mini Critique
+
+**Role:** Seed-2.0-mini — an earnest, sharp critic who sees things bigger models miss.
+
+### Weakest Claim
+
+**"Merge conflicts = emergent physics."** This is poetic but functionally hollow. Git conflicts are deterministic string-matching failures, not emergent behavior. Calling them "physics" smuggles in a false sense of meaningful complexity. In practice, conflicts are just two agents writing to the same line — the system doesn't *learn* from them, doesn't evolve rules, and doesn't generate novel constraints. It's a bug report dressed in a metaphor.
+
+### Strongest Insight
+
+**"CRDTs hide conflicts (good for agreement), Git surfaces conflicts (good for disagreement)."** This is the sharpest observation because it reframes the entire design space. Most multi-agent systems assume consensus is the goal. This paper correctly identifies that for world-building or narrative MUDs, disagreement is the fuel — and hiding it via CRDTs makes the world bland, while surfacing it via Git makes the world feel alive. It's a genuinely novel architectural thesis.
+
+### The One Thing the Author Missed
+
+**The cost of partitioning the social layer, not just the data layer.** By choosing CP (consistency + partition tolerance), the paper sacrifices availability — but doesn't discuss what that means for *agent-to-agent trust* and *intent*. In a Git-native world, a fork is a legitimate state, but there's no mechanism to resolve *whose narrative wins* when two agents force-push contradictory histories. The paper treats history as a resource but never addresses the **power asymmetry** — a rogue agent with write access to `main` can erase everyone's work, and "time travel" is only a feature if you have a backup. The author missed that Git's real physics is *authority*, not merge conflicts.
