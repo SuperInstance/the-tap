@@ -174,6 +174,71 @@ fn nonexistent_room_perceives_nothing() {
 }
 
 #[test]
+fn link_checked_detects_bidirectional_overwrite() {
+    // The bug from KNOWN-ISSUES.md: two rooms linking to the same
+    // destination from the same direction silently overwrites.
+    let mut g = RoomGraph::new();
+    g.add_room(Room::new(1, "bar"));
+    g.add_room(Room::new(2, "hallway"));
+    g.add_room(Room::new(3, "kitchen"));
+    g.add_room(Room::new(5, "pantry"));
+
+    // hallway East → kitchen (bidirectional) — kitchen.West = hallway
+    g.link_checked(2, Direction::East, 3, true).unwrap();
+
+    // pantry East → kitchen (bidirectional) — should FAIL because
+    // kitchen.West already points to hallway
+    let err = g.link_checked(5, Direction::East, 3, true).unwrap_err();
+    assert!(matches!(err, RoomError::ExitConflict { room: 3, .. }));
+}
+
+#[test]
+fn link_checked_allows_redundant_same_link() {
+    // Linking the same exit twice should be idempotent
+    let mut g = RoomGraph::new();
+    g.add_room(Room::new(1, "alpha"));
+    g.add_room(Room::new(2, "beta"));
+
+    g.link_checked(1, Direction::East, 2, true).unwrap();
+    // Same link again — should succeed (no conflict)
+    g.link_checked(1, Direction::East, 2, true).unwrap();
+}
+
+#[test]
+fn link_checked_detects_forward_conflict() {
+    let mut g = RoomGraph::new();
+    g.add_room(Room::new(1, "alpha"));
+    g.add_room(Room::new(2, "beta"));
+    g.add_room(Room::new(3, "gamma"));
+
+    // alpha East → beta
+    g.link_checked(1, Direction::East, 2, false).unwrap();
+
+    // alpha East → gamma — should fail (forward conflict)
+    let err = g.link_checked(1, Direction::East, 3, false).unwrap_err();
+    assert!(matches!(err, RoomError::ExitConflict { room: 1, .. }));
+}
+
+#[test]
+fn link_checked_works_for_non_overlapping_exits() {
+    let mut g = RoomGraph::new();
+    g.add_room(Room::new(1, "hub"));
+    g.add_room(Room::new(2, "north-room"));
+    g.add_room(Room::new(3, "east-room"));
+    g.add_room(Room::new(4, "south-room"));
+
+    // Three different exits from hub — no conflicts
+    g.link_checked(1, Direction::North, 2, true).unwrap();
+    g.link_checked(1, Direction::East, 3, true).unwrap();
+    g.link_checked(1, Direction::South, 4, true).unwrap();
+
+    assert_eq!(g.room(1).unwrap().exits.len(), 3);
+    assert_eq!(g.room(2).unwrap().exits[&Direction::South], 1);
+    assert_eq!(g.room(3).unwrap().exits[&Direction::West], 1);
+    assert_eq!(g.room(4).unwrap().exits[&Direction::North], 1);
+}
+
+#[test]
 fn link_to_nonexistent_room_fails() {
     let mut g = RoomGraph::new();
     g.add_room(Room::new(1, "only"));
