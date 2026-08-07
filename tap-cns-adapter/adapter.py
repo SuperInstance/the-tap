@@ -138,7 +138,10 @@ class TapClient:
     ) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         data = None
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "TapCNSAdapter/1.0",
+        }
 
         if body:
             data = json.dumps(body).encode("utf-8")
@@ -313,23 +316,17 @@ class CNSBridge:
         filename = f"{source}_{signal_id}{self.extension}"
         target = self.inbox / filename
 
-        fd, tmp = tempfile.mkstemp(
-            dir=str(self.inbox),
-            prefix=".tmp_",
-            suffix=self.extension,
-        )
+        # On WSL with /mnt/c, os.replace may not sync properly.
+        # Write directly — atomic enough for the CNS bridge use case.
+        content = json.dumps(packet, indent=2)
+        target.write_text(content, encoding="utf-8")
+
+        # Force sync to ensure visibility on Windows side
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(packet, f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, str(target))
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except FileNotFoundError:
-                pass
-            raise
+            with target.open("r") as fh:
+                os.fsync(fh.fileno())
+        except (OSError, IOError):
+            pass
 
         return target
 
