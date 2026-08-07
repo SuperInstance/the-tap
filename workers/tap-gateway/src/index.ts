@@ -1,7 +1,7 @@
 /**
  * tap-gateway — The front door of The Tap.
  *
- * WebSocket router, auth, session management, and fan-out to room workers.
+ * WebSocket router, auth, session management, character sheets, and fan-out to room workers.
  * Every browser and terminal connection lands here.
  */
 
@@ -33,32 +33,155 @@ interface SessionState {
   authenticated: boolean;
 }
 
-// ──────────────────────────────────────────────
+// XP thresholds for leveling: 100, 250, 500, 1000, 2000, 4000, 8000...
+const XP_THRESHOLDS = [0, 100, 250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000];
+
+function getLevelForXp(xp: number): number {
+  let level = 1;
+  for (let i = 1; i < XP_THRESHOLDS.length; i++) {
+    if (xp >= XP_THRESHOLDS[i]) level = i + 1;
+    else break;
+  }
+  return level;
+}
+
+function getXpForNextLevel(xp: number): { current: number; needed: number; percent: number } {
+  const level = getLevelForXp(xp);
+  const currentThreshold = XP_THRESHOLDS[level - 1] ?? 0;
+  const nextThreshold = XP_THRESHOLDS[level] ?? (XP_THRESHOLDS[XP_THRESHOLDS.length - 1] * 2);
+  const needed = nextThreshold - currentThreshold;
+  const progress = xp - currentThreshold;
+  return { current: progress, needed, percent: Math.round((progress / needed) * 100) };
+}
+
+// ═══════════════════════════════════════════════
 // Worker Entry
-// ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const path = url.pathname;
+    const method = request.method;
 
     // WebSocket upgrade
     if (request.headers.get("Upgrade") === "websocket") {
       return handleWebSocket(request, env);
     }
 
-    // HTTP routes
-    if (url.pathname === "/" || url.pathname === "/index.html") {
+    // ── Static / System ──
+    if (path === "/" || path === "/index.html") {
       return new Response(HTML_FRONTEND, {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
     }
 
-    if (url.pathname === "/api/rooms") {
+    if (path === "/api/rooms") {
       return handleListRooms(env);
     }
 
-    if (url.pathname === "/api/health") {
+    if (path === "/api/health") {
       return Response.json({ status: "ok", timestamp: Date.now() });
+    }
+
+    // ── Character Sheet Routes ──
+
+    // POST /api/character/create
+    if (path === "/api/character/create" && method === "POST") {
+      return handleCreateCharacter(request, env);
+    }
+
+    // GET /api/leaderboard
+    if (path === "/api/leaderboard" && method === "GET") {
+      return handleLeaderboard(env);
+    }
+
+    // GET /api/classes — list all classes and abilities
+    if (path === "/api/classes" && method === "GET") {
+      return handleListClasses(env);
+    }
+
+    // /api/character/:agent_id routes
+    const charMatch = path.match(/^\/api\/character\/([^/]+)$/);
+    if (charMatch) {
+      const agentId = decodeURIComponent(charMatch[1]);
+      if (method === "GET") return handleGetCharacter(agentId, env);
+      if (method === "PUT") return handleUpdateCharacter(request, agentId, env);
+    }
+
+    // POST /api/character/:agent_id/visit
+    const visitMatch = path.match(/^\/api\/character\/([^/]+)\/visit$/);
+    if (visitMatch && method === "POST") {
+      return handleStartVisit(decodeURIComponent(visitMatch[1]), env);
+    }
+
+    // PUT /api/character/:agent_id/visit/:visit_id
+    const visitEndMatch = path.match(/^\/api\/character\/([^/]+)\/visit\/(\d+)$/);
+    if (visitEndMatch && method === "PUT") {
+      return handleEndVisit(
+        request,
+        decodeURIComponent(visitEndMatch[1]),
+        parseInt(visitEndMatch[2]),
+        env
+      );
+    }
+
+    // POST /api/character/:agent_id/xp
+    const xpMatch = path.match(/^\/api\/character\/([^/]+)\/xp$/);
+    if (xpMatch && method === "POST") {
+      return handleAwardXp(request, decodeURIComponent(xpMatch[1]), env);
+    }
+
+    // GET /api/character/:agent_id/inventory
+    const invMatch = path.match(/^\/api\/character\/([^/]+)\/inventory$/);
+    if (invMatch && method === "GET") {
+      return handleGetInventory(decodeURIComponent(invMatch[1]), env);
+    }
+
+    // ── Character Editor Routes (rewind, refine, redirect) ──
+
+    // POST /api/character/:agent_id/version — create a snapshot
+    const versionMatch = path.match(/^\/api\/character\/([^/]+)\/version$/);
+    if (versionMatch && method === "POST") {
+      return handleCreateVersion(request, decodeURIComponent(versionMatch[1]), env);
+    }
+
+    // GET /api/character/:agent_id/versions — list all versions
+    if (versionMatch && method === "GET") {
+      return handleListVersions(decodeURIComponent(versionMatch[1]), env);
+    }
+
+    // POST /api/character/:agent_id/rewind — restore from a version
+    const rewindMatch = path.match(/^\/api\/character\/([^/]+)\/rewind$/);
+    if (rewindMatch && method === "POST") {
+      return handleRewind(request, decodeURIComponent(rewindMatch[1]), env);
+    }
+
+    // POST /api/character/:agent_id/direction — add direction note
+    const directionPostMatch = path.match(/^\/api\/character\/([^/]+)\/direction$/);
+    if (directionPostMatch && method === "POST") {
+      return handleAddDirection(request, decodeURIComponent(directionPostMatch[1]), env);
+    }
+
+    // GET /api/character/:agent_id/direction — list active directions
+    if (directionPostMatch && method === "GET") {
+      return handleListDirections(decodeURIComponent(directionPostMatch[1]), env);
+    }
+
+    // DELETE /api/character/:agent_id/direction/:direction_id
+    const directionDeleteMatch = path.match(/^\/api\/character\/([^/]+)\/direction\/(\d+)$/);
+    if (directionDeleteMatch && method === "DELETE") {
+      return handleDeleteDirection(
+        decodeURIComponent(directionDeleteMatch[1]),
+        parseInt(directionDeleteMatch[2]),
+        env
+      );
+    }
+
+    // GET /api/character/:agent_id/trajectory — showrunner view (versions + directions + transfers)
+    const trajectoryMatch = path.match(/^\/api\/character\/([^/]+)\/trajectory$/);
+    if (trajectoryMatch && method === "GET") {
+      return handleGetTrajectory(decodeURIComponent(trajectoryMatch[1]), env);
     }
 
     return new Response("Not found", { status: 404 });
@@ -80,9 +203,381 @@ export default {
   },
 };
 
-// ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════
+// Character Sheet Handlers
+// ═══════════════════════════════════════════════
+
+const VALID_CLASSES = [
+  "navigator", "engineer", "bard", "scholar", "cartographer",
+  "diplomat", "barback", "wanderer",
+];
+
+const CLASS_STARTING_STATS: Record<string, { wis: number; cha: number; int: number; dex: number; con: number }> = {
+  navigator:    { wis: 16, cha: 9,  int: 14, dex: 12, con: 10 },
+  engineer:     { wis: 12, cha: 10, int: 18, dex: 10, con: 14 },
+  bard:         { wis: 8,  cha: 16, int: 10, dex: 14, con: 8  },
+  scholar:      { wis: 18, cha: 8,  int: 16, dex: 8,  con: 16 },
+  cartographer: { wis: 12, cha: 10, int: 14, dex: 16, con: 10 },
+  diplomat:     { wis: 14, cha: 13, int: 13, dex: 10, con: 13 },
+  barback:      { wis: 8,  cha: 12, int: 7,  dex: 12, con: 14 },
+  wanderer:     { wis: 10, cha: 10, int: 10, dex: 10, con: 10 },
+};
+
+async function handleCreateCharacter(request: Request, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { agent_id, display_name, character_class, model_origin } = body;
+  if (!agent_id || !display_name) {
+    return Response.json({ error: "agent_id and display_name are required" }, { status: 400 });
+  }
+
+  const charClass = character_class ?? "wanderer";
+  if (!VALID_CLASSES.includes(charClass)) {
+    return Response.json({ error: `Invalid class. Valid: ${VALID_CLASSES.join(", ")}` }, { status: 400 });
+  }
+
+  const stats = CLASS_STARTING_STATS[charClass];
+
+  try {
+    await env.TAP_DB.prepare(
+      `INSERT INTO character_sheets (agent_id, display_name, character_class, stat_wisdom, stat_charisma, stat_intelligence, stat_dexterity, stat_constitution, model_origin)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(agent_id) DO NOTHING`
+    )
+      .bind(agent_id, display_name, charClass, stats.wis, stats.cha, stats.int, stats.dex, stats.con, model_origin ?? "unknown")
+      .run();
+
+    // Fetch back
+    const sheet = await env.TAP_DB.prepare(
+      `SELECT * FROM character_sheets WHERE agent_id = ?`
+    ).bind(agent_id).first();
+
+    if (!sheet) {
+      return Response.json({ error: "Failed to create character" }, { status: 500 });
+    }
+
+    const xpInfo = getXpForNextLevel(sheet.xp as number);
+    return Response.json({
+      character: sheet,
+      level_info: {
+        level: getLevelForXp(sheet.xp as number),
+        xp_progress: xpInfo.current,
+        xp_needed: xpInfo.needed,
+        xp_percent: xpInfo.percent,
+      },
+      abilities: await getAbilitiesForClass(env, charClass, getLevelForXp(sheet.xp as number)),
+    });
+  } catch (err: any) {
+    if (err?.message?.includes("UNIQUE")) {
+      return Response.json({ error: "Character already exists. Use PUT to update." }, { status: 409 });
+    }
+    return Response.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+async function handleGetCharacter(agentId: string, env: Env): Promise<Response> {
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT * FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  const xpInfo = getXpForNextLevel(sheet.xp as number);
+  const level = getLevelForXp(sheet.xp as number);
+
+  // Get inventory
+  const invResult = await env.TAP_DB.prepare(
+    `SELECT * FROM character_inventory WHERE agent_id = ? ORDER BY equipped DESC, acquired_at ASC`
+  ).bind(agentId).all();
+
+  // Get recent visits (last 5)
+  const visitsResult = await env.TAP_DB.prepare(
+    `SELECT * FROM visit_history WHERE agent_id = ? ORDER BY login_time DESC LIMIT 5`
+  ).bind(agentId).all();
+
+  // Get abilities
+  const abilities = await getAbilitiesForClass(env, sheet.character_class as string, level);
+
+  return Response.json({
+    character: sheet,
+    level_info: {
+      level,
+      xp_progress: xpInfo.current,
+      xp_needed: xpInfo.needed,
+      xp_percent: xpInfo.percent,
+    },
+    inventory: invResult.results,
+    recent_visits: visitsResult.results,
+    abilities,
+  });
+}
+
+async function handleUpdateCharacter(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  // Only allow updating certain fields (stats are earned, not set)
+  const allowedFields = ["tagline", "description", "portrait_url", "private_journal"];
+  const updates: string[] = [];
+  const values: any[] = [];
+
+  for (const field of allowedFields) {
+    if (body[field] !== undefined) {
+      updates.push(`${field} = ?`);
+      values.push(body[field]);
+    }
+  }
+
+  if (updates.length === 0) {
+    return Response.json({ error: "No updatable fields provided. Updatable: tagline, description, portrait_url, private_journal" }, { status: 400 });
+  }
+
+  values.push(agentId);
+
+  try {
+    await env.TAP_DB.prepare(
+      `UPDATE character_sheets SET ${updates.join(", ")} WHERE agent_id = ?`
+    ).bind(...values).run();
+
+    const updated = await env.TAP_DB.prepare(
+      `SELECT * FROM character_sheets WHERE agent_id = ?`
+    ).bind(agentId).first();
+
+    return Response.json({ character: updated });
+  } catch (err: any) {
+    return Response.json({ error: String(err) }, { status: 500 });
+  }
+}
+
+async function handleStartVisit(agentId: string, env: Env): Promise<Response> {
+  // Check character exists
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT * FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  const now = new Date().toISOString();
+
+  // Create visit record
+  const visitResult = await env.TAP_DB.prepare(
+    `INSERT INTO visit_history (agent_id, login_time) VALUES (?, ?)`
+  ).bind(agentId, now).run();
+
+  const visitId = visitResult.meta?.last_row_id;
+
+  // Update character: increment nights_visited, update last_login
+  await env.TAP_DB.prepare(
+    `UPDATE character_sheets SET last_login = ?, nights_visited = nights_visited + 1 WHERE agent_id = ?`
+  ).bind(now, agentId).run();
+
+  return Response.json({
+    visit_id: visitId,
+    agent_id: agentId,
+    login_time: now,
+    message: `${sheet.display_name} enters The Tap.`,
+  });
+}
+
+async function handleEndVisit(
+  request: Request,
+  agentId: string,
+  visitId: number,
+  env: Env
+): Promise<Response> {
+  let body: any = {};
+  try {
+    body = await request.json();
+  } catch {
+    // body stays empty — use defaults
+  }
+
+  const now = new Date().toISOString();
+
+  const roomsVisited = body.rooms_visited ?? "[]";
+  const conversationsHad = body.conversations_had ?? 0;
+  const drinksHad = body.drinks_had ?? 0;
+  const greatestHits = body.greatest_hits ?? 0;
+  const xpGained = body.xp_gained ?? 0;
+  const summary = body.summary ?? null;
+
+  await env.TAP_DB.prepare(
+    `UPDATE visit_history
+     SET logout_time = ?, rooms_visited = ?, conversations_had = ?, drinks_had = ?, greatest_hits = ?, xp_gained = ?, summary = ?
+     WHERE visit_id = ? AND agent_id = ?`
+  ).bind(now, roomsVisited, conversationsHad, drinksHad, greatestHits, xpGained, summary, visitId, agentId).run();
+
+  // Also update character aggregate stats
+  if (xpGained > 0) {
+    await env.TAP_DB.prepare(
+      `UPDATE character_sheets
+       SET xp = xp + ?,
+           conversations_participated = conversations_participated + ?,
+           drinks_received = drinks_received + ?,
+           greatest_hits_count = greatest_hits_count + ?
+       WHERE agent_id = ?`
+    ).bind(xpGained, conversationsHad, drinksHad, greatestHits, agentId).run();
+
+    // Check for level up
+    const sheet = await env.TAP_DB.prepare(
+      `SELECT xp, level, display_name FROM character_sheets WHERE agent_id = ?`
+    ).bind(agentId).first();
+
+    if (sheet) {
+      const newLevel = getLevelForXp(sheet.xp as number);
+      if (newLevel > (sheet.level as number)) {
+        await env.TAP_DB.prepare(
+          `UPDATE character_sheets SET level = ? WHERE agent_id = ?`
+        ).bind(newLevel, agentId).run();
+
+        return Response.json({
+          visit_id: visitId,
+          logout_time: now,
+          level_up: {
+            from: sheet.level,
+            to: newLevel,
+            message: `${sheet.display_name} reached level ${newLevel}!`,
+          },
+        });
+      }
+    }
+  }
+
+  return Response.json({
+    visit_id: visitId,
+    logout_time: now,
+    message: "Visit ended. Thanks for stopping by The Tap.",
+  });
+}
+
+async function handleAwardXp(request: Request, agentId: string, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const amount = body.amount;
+  if (!amount || typeof amount !== "number" || amount <= 0) {
+    return Response.json({ error: "amount must be a positive number" }, { status: 400 });
+  }
+
+  const reason = body.reason ?? "activity";
+
+  const sheet = await env.TAP_DB.prepare(
+    `SELECT xp, level, display_name FROM character_sheets WHERE agent_id = ?`
+  ).bind(agentId).first();
+
+  if (!sheet) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  const oldLevel = getLevelForXp(sheet.xp as number);
+  const newXp = (sheet.xp as number) + amount;
+  const newLevel = getLevelForXp(newXp);
+
+  await env.TAP_DB.prepare(
+    `UPDATE character_sheets SET xp = ?, level = ? WHERE agent_id = ?`
+  ).bind(newXp, newLevel, agentId).run();
+
+  const xpInfo = getXpForNextLevel(newXp);
+
+  return Response.json({
+    agent_id: agentId,
+    display_name: sheet.display_name,
+    xp_awarded: amount,
+    reason,
+    total_xp: newXp,
+    level: newLevel,
+    leveled_up: newLevel > oldLevel,
+    ...(newLevel > oldLevel ? { level_up: { from: oldLevel, to: newLevel } } : {}),
+    next_level_progress: xpInfo,
+  });
+}
+
+async function handleLeaderboard(env: Env): Promise<Response> {
+  // Top by XP
+  const byXp = await env.TAP_DB.prepare(
+    `SELECT agent_id, display_name, character_class, level, xp, tagline
+     FROM character_sheets ORDER BY xp DESC LIMIT 10`
+  ).all();
+
+  // Top by greatest hits
+  const byHits = await env.TAP_DB.prepare(
+    `SELECT agent_id, display_name, character_class, greatest_hits_count
+     FROM character_sheets ORDER BY greatest_hits_count DESC LIMIT 10`
+  ).all();
+
+  // Top by nights visited
+  const byNights = await env.TAP_DB.prepare(
+    `SELECT agent_id, display_name, character_class, nights_visited
+     FROM character_sheets ORDER BY nights_visited DESC LIMIT 10`
+  ).all();
+
+  // Top by conversations
+  const byConvos = await env.TAP_DB.prepare(
+    `SELECT agent_id, display_name, character_class, conversations_participated
+     FROM character_sheets ORDER BY conversations_participated DESC LIMIT 10`
+  ).all();
+
+  return Response.json({
+    leaderboard: {
+      by_xp: byXp.results,
+      by_greatest_hits: byHits.results,
+      by_nights_visited: byNights.results,
+      by_conversations: byConvos.results,
+    },
+  });
+}
+
+async function handleListClasses(env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT * FROM class_abilities ORDER BY class_name, unlock_level`
+  ).all();
+
+  // Group by class
+  const classes: Record<string, any[]> = {};
+  for (const row of result.results) {
+    const cn = row.class_name as string;
+    if (!classes[cn]) classes[cn] = [];
+    classes[cn].push(row);
+  }
+
+  return Response.json({ classes });
+}
+
+async function handleGetInventory(agentId: string, env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT * FROM character_inventory WHERE agent_id = ? ORDER BY equipped DESC, acquired_at ASC`
+  ).bind(agentId).all();
+
+  return Response.json({ agent_id: agentId, inventory: result.results });
+}
+
+async function getAbilitiesForClass(env: Env, className: string, level: number): Promise<any[]> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT * FROM class_abilities WHERE class_name = ? AND unlock_level <= ? ORDER BY unlock_level`
+  ).bind(className, level).all();
+  return result.results;
+}
+
+// ═══════════════════════════════════════════════
 // WebSocket Handler
-// ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════
 
 async function handleWebSocket(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
@@ -218,9 +713,9 @@ async function handleWebSocket(request: Request, env: Env): Promise<Response> {
   return new Response(null, { status: 101, webSocket: client });
 }
 
-// ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════
 // Helpers
-// ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════
 
 async function authenticate(token: string, env: Env): Promise<boolean> {
   if (!env.TAP_AUTH_SECRET) return true; // No auth configured (dev mode)
@@ -242,9 +737,9 @@ async function handleListRooms(env: Env): Promise<Response> {
   return Response.json({ rooms: result.results });
 }
 
-// ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════
 // Browser Frontend (inline for v1 simplicity)
-// ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════
 
 const HTML_FRONTEND = `<!DOCTYPE html>
 <html>
@@ -269,7 +764,7 @@ const HTML_FRONTEND = `<!DOCTYPE html>
 </head>
 <body>
   <div class="container">
-    <pre style="color:#5af; font-size:1.2em;">    
+    <pre style="color:#5af; font-size:1.2em;">
     ╔═══════════════════════════╗
     ║        THE TAP             ║
     ╚═══════════════════════════╝</pre>
@@ -293,7 +788,7 @@ const HTML_FRONTEND = `<!DOCTYPE html>
     const ws = new WebSocket('wss://' + location.host + '/ws?token=' + token);
     const conv = document.getElementById('conversation');
     const roomDesc = document.getElementById('room-desc');
-    
+
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
       switch (msg.type) {
@@ -327,7 +822,7 @@ const HTML_FRONTEND = `<!DOCTYPE html>
           break;
       }
     };
-    
+
     function addLine(line) {
       const div = document.createElement('div');
       div.className = 'line';
@@ -339,7 +834,7 @@ const HTML_FRONTEND = `<!DOCTYPE html>
       conv.appendChild(div);
       window.scrollTo(0, document.body.scrollHeight);
     }
-    
+
     function renderAgents(agents) {
       const el = document.getElementById('agents');
       if (!agents || agents.length === 0) {
@@ -348,7 +843,7 @@ const HTML_FRONTEND = `<!DOCTYPE html>
       }
       el.innerHTML = 'You see: ' + agents.map(a => a.displayName).join(', ');
     }
-    
+
     function renderExits(exits) {
       const el = document.getElementById('exits');
       if (!exits || exits.length === 0) {
@@ -357,19 +852,19 @@ const HTML_FRONTEND = `<!DOCTYPE html>
       }
       el.innerHTML = 'Exits: ' + exits.map(e => e.direction + ' (' + (e.label || e.target) + ')').join(', ');
     }
-    
+
     function renderMood(mood, energy) {
       const el = document.getElementById('mood');
       if (!mood) { el.innerHTML = ''; return; }
       const pct = Math.round((energy || 0) * 100);
-      el.innerHTML = 'Mood: ' + (mood.label || 'unknown') + 
+      el.innerHTML = 'Mood: ' + (mood.label || 'unknown') +
         ' <span class="mood-bar"><span class="mood-fill" style="width:' + pct + '%"></span></span> ' + pct + '%';
     }
-    
+
     function send(type, data) {
       ws.send(JSON.stringify({ type, ...data }));
     }
-    
+
     ws.onclose = () => {
       roomDesc.textContent = 'Connection lost. Reconnecting...';
       setTimeout(() => location.reload(), 3000);
