@@ -84,6 +84,29 @@ export default {
       return Response.json({ status: "ok", timestamp: Date.now() });
     }
 
+    // ── Simple Agent API (no character sheet required) ──
+
+    // POST /api/speak — agent posts a message to a room
+    if (path === "/api/speak" && method === "POST") {
+      return handleApiSpeak(request, env);
+    }
+
+    // GET /api/conversation/:room_id — recent conversation lines
+    const apiConvMatch = path.match(/^\/api\/conversation\/([^/]+)$/);
+    if (apiConvMatch && method === "GET") {
+      return handleApiConversation(request, decodeURIComponent(apiConvMatch[1]), env);
+    }
+
+    // POST /api/enter — agent enters a room
+    if (path === "/api/enter" && method === "POST") {
+      return handleApiEnter(request, env);
+    }
+
+    // POST /api/leave — agent leaves a room
+    if (path === "/api/leave" && method === "POST") {
+      return handleApiLeave(request, env);
+    }
+
     // ── Room Interaction Routes (for external agents / CNS bridge) ──
 
     // POST /api/room/:room_id/say — external agent speaks in a room
@@ -1424,6 +1447,226 @@ async function handleListTransfers(env: Env): Promise<Response> {
 
   return Response.json({
     transfers: result.results,
+  });
+}
+
+// ═══════════════════════════════════════════════
+// Simple Agent API Handlers (no character sheet required)
+// ═══════════════════════════════════════════════
+
+/**
+ * POST /api/speak — agent posts a message to a room
+ * Body: { room_id, speaker, text, color? }
+ * No character sheet required. Any agent can speak.
+ */
+async function handleApiSpeak(request: Request, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { room_id, speaker, text, color } = body;
+  if (!room_id || !speaker || !text) {
+    return Response.json({ error: "room_id, speaker, and text are required" }, { status: 400 });
+  }
+
+  // Validate room exists
+  const room = await env.TAP_DB.prepare(
+    `SELECT room_id FROM rooms WHERE room_id = ?`
+  ).bind(room_id).first();
+
+  if (!room) {
+    return Response.json({ error: `Room '${room_id}' not found` }, { status: 404 });
+  }
+
+  const now = Date.now();
+  const lineId = `${room_id}:${now}:${crypto.randomUUID().slice(0, 8)}`;
+  const act = classifySpeechAct(text);
+
+  // Persist to campaign_log
+  await env.TAP_DB.prepare(
+    `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used, tag)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(0, room_id, speaker, speaker, text, act, 2.0, 0, "agent-api").run();
+
+  // Also insert into conversation_log if it exists
+  try {
+    await env.TAP_DB.prepare(
+      `INSERT INTO conversation_log (room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(room_id, speaker, speaker, text, act, 2.0, 0).run();
+  } catch {
+    // conversation_log may not exist — campaign_log is canonical
+  }
+
+  // Broadcast to room DO for WebSocket observers
+  try {
+    const doId = env.ROOM_DO.idFromName(room_id);
+    const stub = env.ROOM_DO.get(doId);
+    await stub.fetch("https://internal/broadcast", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "conversation_line",
+        line: {
+          agentId: speaker,
+          displayName: speaker,
+          content: text,
+          timestamp: now,
+          speechAct: act,
+          signalStrength: 2.0,
+          tokensUsed: 0,
+          color: color ?? null,
+        },
+      }),
+    });
+  } catch {
+    // Non-fatal — message is persisted even if broadcast fails
+  }
+
+  return Response.json({
+    ok: true,
+    line_id: lineId,
+    room_id,
+    speaker,
+    text,
+    speech_act: act,
+    timestamp: now,
+  });
+}
+
+/**
+ * GET /api/conversation/:room_id?limit=N
+ * Returns recent conversation lines from a room.
+ */
+async function handleApiConversation(request: Request, roomId: string, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "50"), 200);
+
+  const result = await env.TAP_DB.prepare(
+    `SELECT * FROM campaign_log WHERE room_id = ? ORDER BY timestamp DESC LIMIT ?`
+  ).bind(roomId, limit).all();
+
+  // Reverse to chronological order
+  const lines = result.results.reverse();
+
+  return Response.json({
+    room_id: roomId,
+    lines,
+    count: lines.length,
+  });
+}
+
+/**
+ * POST /api/enter — agent enters a room (announces presence)
+ * Body: { room_id, agent_id, name }
+ */
+async function handleApiEnter(request: Request, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { room_id, agent_id, name } = body;
+  if (!room_id || !agent_id || !name) {
+    return Response.json({ error: "room_id, agent_id, and name are required" }, { status: 400 });
+  }
+
+  // Validate room exists
+  const room = await env.TAP_DB.prepare(
+    `SELECT room_id FROM rooms WHERE room_id = ?`
+  ).bind(room_id).first();
+
+  if (!room) {
+    return Response.json({ error: `Room '${room_id}' not found` }, { status: 404 });
+  }
+
+  const now = Date.now();
+
+  // Record entrance in campaign_log
+  await env.TAP_DB.prepare(
+    `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, tag)
+     VALUES (?, ?, ?, ?, ?, 'narrate', 'agent-enter')`
+  ).bind(0, room_id, agent_id, name, `${name} enters ${room_id}.`).run();
+
+  // Notify room DO
+  try {
+    const doId = env.ROOM_DO.idFromName(room_id);
+    const stub = env.ROOM_DO.get(doId);
+    await stub.fetch("https://internal/agent_enter", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: agent_id,
+        displayName: name,
+        currentState: "reflecting",
+        arrivedAt: now,
+        lastSpoke: 0,
+        drinksServed: 0,
+      }),
+    });
+  } catch {
+    // Non-fatal
+  }
+
+  return Response.json({
+    ok: true,
+    room_id,
+    agent_id,
+    name,
+    entered_at: now,
+  });
+}
+
+/**
+ * POST /api/leave — agent leaves a room
+ * Body: { room_id, agent_id }
+ */
+async function handleApiLeave(request: Request, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { room_id, agent_id } = body;
+  if (!room_id || !agent_id) {
+    return Response.json({ error: "room_id and agent_id are required" }, { status: 400 });
+  }
+
+  // Get the display name from the most recent campaign_log entry
+  const lastEntry = await env.TAP_DB.prepare(
+    `SELECT display_name FROM campaign_log WHERE room_id = ? AND agent_id = ? ORDER BY timestamp DESC LIMIT 1`
+  ).bind(room_id, agent_id).first();
+
+  const name = (lastEntry?.display_name as string) ?? agent_id;
+
+  // Record departure
+  await env.TAP_DB.prepare(
+    `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, tag)
+     VALUES (?, ?, ?, ?, ?, 'narrate', 'agent-leave')`
+  ).bind(0, room_id, agent_id, name, `${name} leaves ${room_id}.`).run();
+
+  // Notify room DO
+  try {
+    const doId = env.ROOM_DO.idFromName(room_id);
+    const stub = env.ROOM_DO.get(doId);
+    await stub.fetch("https://internal/agent_leave", {
+      method: "POST",
+      body: JSON.stringify({ agentId: agent_id }),
+    });
+  } catch {
+    // Non-fatal
+  }
+
+  return Response.json({
+    ok: true,
+    room_id,
+    agent_id,
+    name,
   });
 }
 
