@@ -64,10 +64,10 @@ MODELS = {
     },
     "anything": {
         "path": "/home/eileen/models/AnythingXL_inkBase.safetensors",
-        "type": "sdxl",
+        "type": "sd15",  # Despite "XL" in name, this is an SD 1.5 architecture checkpoint
         "steps": 25,
         "guidance": 7.0,
-        "description": "AnythingXL — anime, illustration, playful styles",
+        "description": "AnythingXL inkBase — anime, illustration, playful styles",
     },
 }
 
