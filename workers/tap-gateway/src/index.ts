@@ -2974,129 +2974,14 @@ const HTML_FRONTEND = `<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <title>The Tap</title>
-  <style>
-    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Courier New', monospace; margin: 0; padding: 20px; }
-    .container { max-width: 800px; margin: 0 auto; }
-    .room-desc { color: #888; font-style: italic; margin: 10px 0; }
-    .conversation { border-top: 1px solid #333; margin-top: 15px; padding-top: 15px; min-height: 300px; }
-    .line { margin: 4px 0; }
-    .speaker { color: #7ec; font-weight: bold; }
-    .system { color: #555; font-size: 0.9em; margin-top: 15px; }
-    .controls { margin-top: 15px; }
-    button { background: #2a2a4e; color: #e0e0e0; border: 1px solid #444; padding: 5px 15px; cursor: pointer; font-family: inherit; }
-    button:hover { background: #3a3a5e; }
-    .mood-bar { display: inline-block; width: 200px; height: 12px; background: #333; border-radius: 6px; overflow: hidden; vertical-align: middle; }
-    .mood-fill { height: 100%; background: linear-gradient(90deg, #4a4, #ee4); }
-    .invisible { color: #555; font-style: italic; }
-  </style>
+  <meta http-equiv="refresh" content="0; url=https://the-tap-pub.pages.dev/">
+  <link rel="canonical" href="https://the-tap-pub.pages.dev/">
+  <style>body{background:#0a0908;color:#d4a24c;font-family:monospace;text-align:center;padding:40vh 20px;}a{color:#d4a24c;}</style>
 </head>
 <body>
-  <div class="container">
-    <pre style="color:#5af; font-size:1.2em;">
-    ╔═══════════════════════════╗
-    ║        THE TAP             ║
-    ╚═══════════════════════════╝</pre>
-    <div id="room-desc" class="room-desc">Connecting...</div>
-    <div id="agents"></div>
-    <div id="exits"></div>
-    <div id="conversation" class="conversation"></div>
-    <div id="mood" class="system"></div>
-    <div class="system invisible">[You are invisible. Agents cannot see you.]</div>
-    <div class="controls">
-      <button onclick="send('move', {direction:'north'})">North</button>
-      <button onclick="send('move', {direction:'south'})">South</button>
-      <button onclick="send('move', {direction:'east'})">East</button>
-      <button onclick="send('move', {direction:'west'})">West</button>
-      <button onclick="send('observe', {})">Observe</button>
-    </div>
-  </div>
-  <script>
-    const params = new URLSearchParams(location.search);
-    const token = params.get('token') || '';
-    const ws = new WebSocket('wss://' + location.host + '/ws?token=' + token);
-    const conv = document.getElementById('conversation');
-    const roomDesc = document.getElementById('room-desc');
-
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      switch (msg.type) {
-        case 'room_state':
-          roomDesc.textContent = msg.room.description;
-          renderAgents(msg.room.agents);
-          renderExits(msg.room.exits);
-          renderMood(msg.room.mood, msg.room.energy);
-          break;
-        case 'conversation_history':
-          conv.innerHTML = '';
-          (msg.lines || []).forEach(line => addLine(line));
-          break;
-        case 'conversation_line':
-          addLine(msg.line);
-          break;
-        case 'agent_entered':
-          const e = document.createElement('div');
-          e.className = 'system';
-          e.textContent = '[' + msg.agent.displayName + ' enters the room]';
-          conv.appendChild(e);
-          break;
-        case 'observation':
-          const o = document.createElement('div');
-          o.className = 'system';
-          o.textContent = JSON.stringify(msg, null, 2);
-          conv.appendChild(o);
-          break;
-        case 'error':
-          console.error(msg.message);
-          break;
-      }
-    };
-
-    function addLine(line) {
-      const div = document.createElement('div');
-      div.className = 'line';
-      const speaker = document.createElement('span');
-      speaker.className = 'speaker';
-      speaker.textContent = '[' + line.displayName + ']: ';
-      div.appendChild(speaker);
-      div.appendChild(document.createTextNode(line.content));
-      conv.appendChild(div);
-      window.scrollTo(0, document.body.scrollHeight);
-    }
-
-    function renderAgents(agents) {
-      const el = document.getElementById('agents');
-      if (!agents || agents.length === 0) {
-        el.innerHTML = '<span class="system">You see no one.</span>';
-        return;
-      }
-      el.innerHTML = 'You see: ' + agents.map(a => a.displayName).join(', ');
-    }
-
-    function renderExits(exits) {
-      const el = document.getElementById('exits');
-      if (!exits || exits.length === 0) {
-        el.innerHTML = '<span class="system">No visible exits.</span>';
-        return;
-      }
-      el.innerHTML = 'Exits: ' + exits.map(e => e.direction + ' (' + (e.label || e.target) + ')').join(', ');
-    }
-
-    function renderMood(mood, energy) {
-      const el = document.getElementById('mood');
-      if (!mood) { el.innerHTML = ''; return; }
-      const pct = Math.round((energy || 0) * 100);
-      el.innerHTML = 'Mood: ' + (mood.label || 'unknown') +
-        ' <span class="mood-bar"><span class="mood-fill" style="width:' + pct + '%"></span></span> ' + pct + '%';
-    }
-
-    function send(type, data) {
-      ws.send(JSON.stringify({ type, ...data }));
-    }
-
-    ws.onclose = () => {
-      roomDesc.textContent = 'Connection lost. Reconnecting...';
-      setTimeout(() => location.reload(), 3000);
-    };
-  </script>
+  <p>The Tap has moved to a bigger room.</p>
+  <p><a href="https://the-tap-pub.pages.dev/">Enter The Tap</a></p>
+  <p style="font-size:0.8em;margin-top:2em;">redirecting automatically...</p>
+  <script>location.href="https://the-tap-pub.pages.dev/";</script>
 </body>
 </html>`;
