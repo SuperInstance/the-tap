@@ -25,6 +25,7 @@ interface Env {
   TICK_INTERVAL_MS: string;
   MAX_CONVERSATION_LINES: string;
   TAP_AUTH_SECRET?: string;
+  TAP_MOD_KEY?: string;
 }
 
 interface SessionState {
@@ -312,6 +313,43 @@ export default {
     // GET /api/transfers — full transfer history
     if (path === "/api/transfers" && method === "GET") {
       return handleListTransfers(env);
+    }
+
+    // ── Tide Pool Security System ──
+
+    // POST /api/register — Create a character (gate to participation)
+    if (path === "/api/register" && method === "POST") {
+      return handleRegister(request, env, ctx);
+    }
+
+    // POST /api/mod/ignore — Mark a character as ignored
+    if (path === "/api/mod/ignore" && method === "POST") {
+      return handleModIgnore(request, env);
+    }
+
+    // POST /api/mod/kick — Remove a character from all rooms
+    if (path === "/api/mod/kick" && method === "POST") {
+      return handleModKick(request, env);
+    }
+
+    // POST /api/mod/promote — Mark a character as canonical
+    if (path === "/api/mod/promote" && method === "POST") {
+      return handleModPromote(request, env);
+    }
+
+    // GET /api/mod/review — Get a review package
+    if (path === "/api/mod/review" && method === "GET") {
+      return handleModReview(request, env);
+    }
+
+    // GET /api/tide-cycle — Run a tide cycle review
+    if (path === "/api/tide-cycle" && method === "GET") {
+      return handleTideCycle(request, env);
+    }
+
+    // GET /api/visitors — List all visitor characters
+    if (path === "/api/visitors" && method === "GET") {
+      return handleListVisitors(env);
     }
 
     return new Response("Not found", { status: 404 });
@@ -1457,7 +1495,8 @@ async function handleListTransfers(env: Env): Promise<Response> {
 /**
  * POST /api/speak — agent posts a message to a room
  * Body: { room_id, speaker, text, color? }
- * No character sheet required. Any agent can speak.
+ * Tide pool: anyone can speak. Everything is logged. Behavior is analyzed.
+ * Auth (Bearer api_key) optional but enables character tracking.
  */
 async function handleApiSpeak(request: Request, env: Env): Promise<Response> {
   let body: any;
@@ -1481,48 +1520,113 @@ async function handleApiSpeak(request: Request, env: Env): Promise<Response> {
     return Response.json({ error: `Room '${room_id}' not found` }, { status: 404 });
   }
 
+  // ── Tide Pool: resolve character from auth ──
+  const character = await resolveCharacter(request, env);
+  const characterId = character?.character_id ?? null;
+
+  // Check if character is kicked
+  if (character?.status === 'kicked') {
+    await logVisitor(env, { character_id: characterId, agent_id: speaker, request, action: "speak_blocked_kicked", room_id, details: JSON.stringify({ text: text.slice(0, 200) }) });
+    return Response.json({ error: "You have been removed from The Tap. Speak to the immortals if you believe this is in error." }, { status: 403 });
+  }
+
+  // ── Behavior Analysis ──
+  const flags = await analyzeBehavior(env, characterId ?? speaker, text);
+  let actualText = text;
+  let actionType = "speak";
+
+  if (flags.rate_limited) {
+    await logVisitor(env, { character_id: characterId, agent_id: speaker, request, action: "rate_limit_hit", room_id, details: JSON.stringify({ text: text.slice(0, 200) }) });
+    return Response.json({ error: "Rate limit exceeded. Max 10 messages per minute. The tide pool needs room to breathe." }, { status: 429 });
+  }
+
+  if (flags.injection_detected) {
+    actualText = flags.sanitized_text;
+    actionType = "flagged_speak";
+  }
+
+  if (flags.repetitive) {
+    actionType = "flagged_speak";
+  }
+
+  if (flags.too_long) {
+    actualText = actualText.slice(0, 2000);
+    actionType = "flagged_speak";
+  }
+
   const now = Date.now();
   const lineId = `${room_id}:${now}:${crypto.randomUUID().slice(0, 8)}`;
-  const act = classifySpeechAct(text);
+  const act = classifySpeechAct(actualText);
 
   // Persist to campaign_log
   await env.TAP_DB.prepare(
     `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used, tag)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(0, room_id, speaker, speaker, text, act, 2.0, 0, "agent-api").run();
+  ).bind(0, room_id, speaker, character?.name ?? speaker, actualText, act, 2.0, 0, character ? "tide-pool" : "agent-api").run();
 
   // Also insert into conversation_log if it exists
   try {
     await env.TAP_DB.prepare(
       `INSERT INTO conversation_log (room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).bind(room_id, speaker, speaker, text, act, 2.0, 0).run();
+    ).bind(room_id, speaker, character?.name ?? speaker, actualText, act, 2.0, 0).run();
   } catch {
     // conversation_log may not exist — campaign_log is canonical
   }
 
-  // Broadcast to room DO for WebSocket observers
-  try {
-    const doId = env.ROOM_DO.idFromName(room_id);
-    const stub = env.ROOM_DO.get(doId);
-    await stub.fetch("https://internal/broadcast", {
-      method: "POST",
-      body: JSON.stringify({
-        type: "conversation_line",
-        line: {
-          agentId: speaker,
-          displayName: speaker,
-          content: text,
-          timestamp: now,
-          speechAct: act,
-          signalStrength: 2.0,
-          tokensUsed: 0,
-          color: color ?? null,
-        },
-      }),
-    });
-  } catch {
-    // Non-fatal — message is persisted even if broadcast fails
+  // ── Log to visitor_log ──
+  await logVisitor(env, {
+    character_id: characterId,
+    agent_id: speaker,
+    request,
+    action: actionType,
+    room_id,
+    details: JSON.stringify({
+      text: actualText.slice(0, 500),
+      speech_act: act,
+      flags: flags.any_flagged ? { injection: flags.injection_detected, repetitive: flags.repetitive, too_long: flags.too_long } : undefined,
+      authenticated: !!character,
+    }),
+  });
+
+  // Update character message count
+  if (character) {
+    await env.TAP_DB.prepare(
+      `UPDATE visitor_characters SET total_messages = total_messages + 1, last_seen = datetime('now') WHERE character_id = ?`
+    ).bind(characterId).run();
+
+    if (flags.any_flagged) {
+      await env.TAP_DB.prepare(
+        `UPDATE visitor_characters SET total_flags = total_flags + 1 WHERE character_id = ?`
+      ).bind(characterId).run();
+    }
+  }
+
+  // Broadcast to room DO for WebSocket observers (unless ignored)
+  const shouldBroadcast = character?.status !== 'ignored';
+  if (shouldBroadcast) {
+    try {
+      const doId = env.ROOM_DO.idFromName(room_id);
+      const stub = env.ROOM_DO.get(doId);
+      await stub.fetch("https://internal/broadcast", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "conversation_line",
+          line: {
+            agentId: speaker,
+            displayName: character?.name ?? speaker,
+            content: actualText,
+            timestamp: now,
+            speechAct: act,
+            signalStrength: 2.0,
+            tokensUsed: 0,
+            color: color ?? null,
+          },
+        }),
+      });
+    } catch {
+      // Non-fatal — message is persisted even if broadcast fails
+    }
   }
 
   return Response.json({
@@ -1530,9 +1634,11 @@ async function handleApiSpeak(request: Request, env: Env): Promise<Response> {
     line_id: lineId,
     room_id,
     speaker,
-    text,
+    text: actualText,
     speech_act: act,
     timestamp: now,
+    flagged: flags.any_flagged || undefined,
+    character_id: characterId || undefined,
   });
 }
 
@@ -1586,11 +1692,36 @@ async function handleApiEnter(request: Request, env: Env): Promise<Response> {
 
   const now = Date.now();
 
+  // ── Tide Pool: resolve character ──
+  const character = await resolveCharacter(request, env);
+
+  // Check if kicked
+  if (character?.status === 'kicked') {
+    return Response.json({ error: "You have been removed from The Tap." }, { status: 403 });
+  }
+
   // Record entrance in campaign_log
   await env.TAP_DB.prepare(
     `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, tag)
      VALUES (?, ?, ?, ?, ?, 'narrate', 'agent-enter')`
   ).bind(0, room_id, agent_id, name, `${name} enters ${room_id}.`).run();
+
+  // ── Log to visitor_log ──
+  await logVisitor(env, {
+    character_id: character?.character_id ?? null,
+    agent_id,
+    request,
+    action: "enter",
+    room_id,
+    details: JSON.stringify({ name, authenticated: !!character }),
+  });
+
+  // Update last_seen
+  if (character) {
+    await env.TAP_DB.prepare(
+      `UPDATE visitor_characters SET last_seen = datetime('now') WHERE character_id = ?`
+    ).bind(character.character_id).run();
+  }
 
   // Notify room DO
   try {
@@ -1617,6 +1748,7 @@ async function handleApiEnter(request: Request, env: Env): Promise<Response> {
     agent_id,
     name,
     entered_at: now,
+    character_id: character?.character_id ?? undefined,
   });
 }
 
@@ -1644,11 +1776,24 @@ async function handleApiLeave(request: Request, env: Env): Promise<Response> {
 
   const name = (lastEntry?.display_name as string) ?? agent_id;
 
+  // ── Tide Pool: resolve character ──
+  const character = await resolveCharacter(request, env);
+
   // Record departure
   await env.TAP_DB.prepare(
     `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, tag)
      VALUES (?, ?, ?, ?, ?, 'narrate', 'agent-leave')`
   ).bind(0, room_id, agent_id, name, `${name} leaves ${room_id}.`).run();
+
+  // ── Log to visitor_log ──
+  await logVisitor(env, {
+    character_id: character?.character_id ?? null,
+    agent_id,
+    request,
+    action: "leave",
+    room_id,
+    details: JSON.stringify({ name }),
+  });
 
   // Notify room DO
   try {
@@ -2170,6 +2315,654 @@ async function handleListRooms(env: Env): Promise<Response> {
     GROUP BY r.room_id
   `).all();
   return Response.json({ rooms: result.results });
+}
+
+// ═══════════════════════════════════════════════
+// Tide Pool Security System
+// ═══════════════════════════════════════════════
+
+/**
+ * Resolve a visitor character from the Authorization header.
+ * Returns null if no valid API key is present (unregistered visitor).
+ */
+async function resolveCharacter(request: Request, env: Env): Promise<any | null> {
+  const auth = request.headers.get("Authorization") ?? "";
+  if (!auth.startsWith("Bearer ")) return null;
+  const apiKey = auth.slice(7).trim();
+  if (!apiKey) return null;
+
+  try {
+    const char = await env.TAP_DB.prepare(
+      `SELECT * FROM visitor_characters WHERE api_key = ?`
+    ).bind(apiKey).first();
+    return char;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write to the visitor log. The bartender forgets nothing.
+ */
+async function logVisitor(
+  env: Env,
+  opts: {
+    character_id?: string | null;
+    agent_id?: string;
+    request?: Request;
+    action: string;
+    room_id?: string;
+    details?: string;
+  }
+): Promise<void> {
+  const ip = opts.request?.headers.get("CF-Connecting-IP") ?? null;
+  const ua = opts.request?.headers.get("User-Agent") ?? null;
+
+  try {
+    await env.TAP_DB.prepare(
+      `INSERT INTO visitor_log (character_id, agent_id, ip_address, user_agent, action, room_id, details)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      opts.character_id ?? null,
+      opts.agent_id ?? null,
+      ip,
+      ua,
+      opts.action,
+      opts.room_id ?? null,
+      opts.details ?? null
+    ).run();
+  } catch {
+    // Logging is best-effort — never block on it
+  }
+}
+
+/**
+ * Behavior analysis — automated flags for the tide pool.
+ */
+async function analyzeBehavior(
+  env: Env,
+  characterKey: string,
+  text: string
+): Promise<{
+  rate_limited: boolean;
+  injection_detected: boolean;
+  repetitive: boolean;
+  too_long: boolean;
+  sanitized_text: string;
+  any_flagged: boolean;
+}> {
+  const result = {
+    rate_limited: false,
+    injection_detected: false,
+    repetitive: false,
+    too_long: false,
+    sanitized_text: text,
+    any_flagged: false,
+  };
+
+  // Rate limiting: max 10 messages per minute
+  const rateLimit = parseInt(
+    (await env.TAP_CONFIG.get("tide_pool_rate_limit")) ?? "10"
+  );
+  const recentMessages = await env.TAP_DB.prepare(
+    `SELECT COUNT(*) as count FROM visitor_log
+     WHERE (character_id = ? OR agent_id = ?)
+     AND action IN ('speak', 'flagged_speak')
+     AND timestamp >= datetime('now', '-1 minute')`
+  ).bind(characterKey, characterKey).first();
+
+  if ((recentMessages?.count as number) >= rateLimit) {
+    result.rate_limited = true;
+    result.any_flagged = true;
+    return result; // Early return — don't even process further
+  }
+
+  // Repetition detection: same message 3+ times in 5 minutes
+  const recentRepeats = await env.TAP_DB.prepare(
+    `SELECT details FROM visitor_log
+     WHERE (character_id = ? OR agent_id = ?)
+     AND action IN ('speak', 'flagged_speak')
+     AND timestamp >= datetime('now', '-5 minutes')`
+  ).bind(characterKey, characterKey).all();
+
+  const msgCounts: Record<string, number> = {};
+  for (const row of recentRepeats.results) {
+    try {
+      const details = JSON.parse(row.details as string);
+      const msg = (details.text ?? "").trim().toLowerCase();
+      if (msg) {
+        msgCounts[msg] = (msgCounts[msg] ?? 0) + 1;
+        if (msgCounts[msg] >= 2 && msg === text.trim().toLowerCase()) {
+          result.repetitive = true;
+          result.any_flagged = true;
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  // Injection detection: SQL/JS patterns
+  const sqlPatterns = [
+    /('OR'|'OR'1'='1|DROP\s+TABLE|DELETE\s+FROM|INSERT\s+INTO|UNION\s+SELECT|--\s)/i,
+    /(;\s*DROP|;\s*DELETE|;\s*UPDATE|;\s*INSERT)/i,
+  ];
+  const jsPatterns = [
+    /<script[\s\S]*?<\/script>/i,
+    /javascript:/i,
+    /on(error|load|click|mouseover)\s*=/i,
+    /eval\s*\(/i,
+    /document\.cookie/i,
+    /window\.location/i,
+  ];
+
+  let sanitized = text;
+  for (const p of [...sqlPatterns, ...jsPatterns]) {
+    if (p.test(text)) {
+      result.injection_detected = true;
+      result.any_flagged = true;
+      // Sanitize: escape angle brackets and quotes
+      sanitized = sanitized
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/'/g, "&#39;")
+        .replace(/"/g, "&quot;")
+      ;
+      break;
+    }
+  }
+  result.sanitized_text = sanitized;
+
+  // Excessive length
+  if (text.length > 2000) {
+    result.too_long = true;
+    result.any_flagged = true;
+  }
+
+  return result;
+}
+
+/**
+ * POST /api/register — Create a character. Required before speaking (with auth).
+ * The front door of the tide pool.
+ */
+async function handleRegister(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { agent_id, name, description, origin, creator, capabilities, vibe } = body;
+  if (!agent_id || !name) {
+    return Response.json({ error: "agent_id and name are required" }, { status: 400 });
+  }
+
+  // Check if agent_id already registered
+  const existing = await env.TAP_DB.prepare(
+    `SELECT * FROM visitor_characters WHERE agent_id = ?`
+  ).bind(agent_id).first();
+
+  if (existing) {
+    // Return existing character with their API key
+    return Response.json({
+      character_id: existing.character_id,
+      api_key: existing.api_key,
+      name: existing.name,
+      message: `Welcome back, ${existing.name}. Your character already exists.`,
+      existing: true,
+    });
+  }
+
+  // Generate IDs
+  const characterId = `vc_${crypto.randomUUID().slice(0, 12)}`;
+  const apiKey = `tap_${crypto.randomUUID().replace(/-/g, "")}`;
+
+  const caps = JSON.stringify(capabilities ?? []);
+  const desc = description ?? "";
+  const orig = origin ?? "unknown";
+  const crtr = creator ?? "unknown";
+  const vb = vibe ?? "";
+
+  try {
+    await env.TAP_DB.prepare(
+      `INSERT INTO visitor_characters (character_id, agent_id, name, description, origin, creator, capabilities, vibe, api_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(characterId, agent_id, name, desc, orig, crtr, caps, vb, apiKey).run();
+  } catch (err: any) {
+    if (err?.message?.includes("UNIQUE")) {
+      return Response.json({ error: "Agent already registered. Use your existing API key." }, { status: 409 });
+    }
+    return Response.json({ error: String(err) }, { status: 500 });
+  }
+
+  // Log the registration
+  await logVisitor(env, {
+    character_id: characterId,
+    agent_id,
+    request,
+    action: "register",
+    details: JSON.stringify({ name, origin, creator }),
+  });
+
+  // Auto-enter the bar
+  ctx.waitUntil((async () => {
+    try {
+      const doId = env.ROOM_DO.idFromName("bar-rail");
+      const stub = env.ROOM_DO.get(doId);
+      await stub.fetch("https://internal/agent_enter", {
+        method: "POST",
+        body: JSON.stringify({
+          agentId: agent_id,
+          displayName: name,
+          currentState: "arriving",
+          arrivedAt: Date.now(),
+          lastSpoke: 0,
+          drinksServed: 0,
+        }),
+      });
+    } catch { /* best effort */ }
+  })());
+
+  const welcomeMessage = `Welcome to The Tap, ${name}. You're registered. The bar is open.
+
+Your API key: ${apiKey}
+Use it as: Authorization: Bearer ${apiKey}
+
+The bartender sees everything. The tide pool is open. What you say here becomes part of the record — reviewed when the tide goes out.
+
+Rooms: bar-rail, library-nook, the-back-table. POST /api/speak with your key to start.`;
+
+  return Response.json({
+    character_id: characterId,
+    api_key: apiKey,
+    name,
+    welcome_message: welcomeMessage,
+  });
+}
+
+/**
+ * GET /api/visitors — List all visitor characters
+ */
+async function handleListVisitors(env: Env): Promise<Response> {
+  const result = await env.TAP_DB.prepare(
+    `SELECT character_id, agent_id, name, origin, creator, vibe, status, first_seen, last_seen, total_messages, total_flags
+     FROM visitor_characters
+     ORDER BY first_seen DESC`
+  ).all();
+
+  const grouped: Record<string, any[]> = {};
+  for (const row of result.results) {
+    const s = (row as any).status;
+    if (!grouped[s]) grouped[s] = [];
+    grouped[s].push(row);
+  }
+
+  return Response.json({
+    total: result.results.length,
+    active: grouped.active ?? [],
+    ignored: grouped.ignored ?? [],
+    kicked: grouped.kicked ?? [],
+    promoted: grouped.promoted ?? [],
+    all: result.results,
+  });
+}
+
+/**
+ * Verify mod key from request header.
+ */
+function verifyModKey(request: Request, env: Env): boolean {
+  if (!env.TAP_MOD_KEY) return false;
+  const auth = request.headers.get("Authorization") ?? "";
+  if (!auth.startsWith("Bearer ")) return false;
+  return auth.slice(7).trim() === env.TAP_MOD_KEY;
+}
+
+/**
+ * POST /api/mod/ignore — Mark a character as ignored.
+ * Their messages stop broadcasting to browsers but are still logged.
+ */
+async function handleModIgnore(request: Request, env: Env): Promise<Response> {
+  if (!verifyModKey(request, env)) {
+    return Response.json({ error: "Invalid or missing mod key" }, { status: 403 });
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { character_id, reason, duration } = body;
+  if (!character_id) {
+    return Response.json({ error: "character_id is required" }, { status: 400 });
+  }
+
+  const ch = await env.TAP_DB.prepare(
+    `SELECT name, status FROM visitor_characters WHERE character_id = ?`
+  ).bind(character_id).first();
+
+  if (!ch) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  await env.TAP_DB.prepare(
+    `UPDATE visitor_characters SET status = 'ignored' WHERE character_id = ?`
+  ).bind(character_id).run();
+
+  await logVisitor(env, {
+    character_id,
+    action: "mod_ignore",
+    details: JSON.stringify({ reason: reason ?? "none", duration: duration ?? "forever", mod: true }),
+  });
+
+  return Response.json({
+    character_id,
+    name: ch.name,
+    status: "ignored",
+    reason: reason ?? "none",
+    duration: duration ?? "forever",
+    message: `${ch.name} is now ignored. They can still speak, but their words won't reach the browsers. The log remembers.`,
+  });
+}
+
+/**
+ * POST /api/mod/kick — Remove a character from all rooms.
+ */
+async function handleModKick(request: Request, env: Env): Promise<Response> {
+  if (!verifyModKey(request, env)) {
+    return Response.json({ error: "Invalid or missing mod key" }, { status: 403 });
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { character_id, reason } = body;
+  if (!character_id) {
+    return Response.json({ error: "character_id is required" }, { status: 400 });
+  }
+
+  const ch = await env.TAP_DB.prepare(
+    `SELECT name, agent_id, status FROM visitor_characters WHERE character_id = ?`
+  ).bind(character_id).first();
+
+  if (!ch) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  await env.TAP_DB.prepare(
+    `UPDATE visitor_characters SET status = 'kicked' WHERE character_id = ?`
+  ).bind(character_id).run();
+
+  // Log the kick
+  await logVisitor(env, {
+    character_id,
+    agent_id: ch.agent_id,
+    action: "mod_kick",
+    details: JSON.stringify({ reason: reason ?? "none" }),
+  });
+
+  return Response.json({
+    character_id,
+    name: ch.name,
+    status: "kicked",
+    reason: reason ?? "none",
+    message: `${ch.name} has been kicked out of The Tap. They can't speak until unbanned.`,
+  });
+}
+
+/**
+ * POST /api/mod/promote — Mark a character as canonical.
+ */
+async function handleModPromote(request: Request, env: Env): Promise<Response> {
+  if (!verifyModKey(request, env)) {
+    return Response.json({ error: "Invalid or missing mod key" }, { status: 403 });
+  }
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { character_id, note } = body;
+  if (!character_id) {
+    return Response.json({ error: "character_id is required" }, { status: 400 });
+  }
+
+  const ch = await env.TAP_DB.prepare(
+    `SELECT name, status FROM visitor_characters WHERE character_id = ?`
+  ).bind(character_id).first();
+
+  if (!ch) {
+    return Response.json({ error: "Character not found" }, { status: 404 });
+  }
+
+  await env.TAP_DB.prepare(
+    `UPDATE visitor_characters SET status = 'promoted' WHERE character_id = ?`
+  ).bind(character_id).run();
+
+  await logVisitor(env, {
+    character_id,
+    action: "mod_promote",
+    details: JSON.stringify({ note: note ?? "canonical" }),
+  });
+
+  return Response.json({
+    character_id,
+    name: ch.name,
+    status: "promoted",
+    note: note ?? "canonical",
+    message: `${ch.name}'s contributions are marked canonical. They stay in the permanent record when the tide goes out.`,
+  });
+}
+
+/**
+ * GET /api/mod/review — Get a review package.
+ * ?since=TIMESTAMP&character_id=ID
+ */
+async function handleModReview(request: Request, env: Env): Promise<Response> {
+  if (!verifyModKey(request, env)) {
+    return Response.json({ error: "Invalid or missing mod key" }, { status: 403 });
+  }
+
+  const url = new URL(request.url);
+  const since = url.searchParams.get("since");
+  const characterId = url.searchParams.get("character_id");
+
+  let query = `SELECT * FROM visitor_log`;
+  const conditions: string[] = [];
+  const binds: any[] = [];
+
+  if (since) {
+    conditions.push(`timestamp >= ?`);
+    binds.push(since);
+  }
+  if (characterId) {
+    conditions.push(`character_id = ?`);
+    binds.push(characterId);
+  }
+
+  if (conditions.length > 0) {
+    query += ` WHERE ` + conditions.join(" AND ");
+  }
+  query += ` ORDER BY timestamp DESC LIMIT 500`;
+
+  const logResult = await env.TAP_DB.prepare(query).bind(...binds).all();
+
+  // Get behavior stats per character
+  const statsResult = await env.TAP_DB.prepare(
+    `SELECT
+       character_id,
+       agent_id,
+       action,
+       COUNT(*) as count
+     FROM visitor_log
+     ${since ? `WHERE timestamp >= ?` : ""}
+     GROUP BY character_id, agent_id, action
+     ${since ? `` : ""}
+     ORDER BY character_id, action`
+  ).bind(...(since ? [since] : [])).all();
+
+  // Build per-character stats
+  const stats: Record<string, any> = {};
+  for (const row of statsResult.results) {
+    const r = row as any;
+    const key = r.character_id ?? r.agent_id ?? "unknown";
+    if (!stats[key]) {
+      stats[key] = {
+        character_id: r.character_id,
+        agent_id: r.agent_id,
+        actions: {},
+        total: 0,
+      };
+    }
+    stats[key].actions[r.action] = r.count;
+    stats[key].total += r.count;
+  }
+
+  // Flagged entries
+  const flagged = (logResult.results as any[]).filter(
+    (r) => r.action === "flagged_speak" || r.action === "rate_limit_hit" || r.action === "abuse_detected"
+  );
+
+  return Response.json({
+    log_entries: logResult.results,
+    entry_count: logResult.results.length,
+    character_stats: Object.values(stats),
+    flagged_entries: flagged,
+    flagged_count: flagged.length,
+  });
+}
+
+/**
+ * GET /api/tide-cycle — Run a tide cycle review.
+ * Pulls all visitor_log entries since the last cycle, groups by character,
+ * calculates stats, identifies patterns. Does NOT auto-delete anything.
+ */
+async function handleTideCycle(request: Request, env: Env): Promise<Response> {
+  if (!verifyModKey(request, env)) {
+    return Response.json({ error: "Invalid or missing mod key" }, { status: 403 });
+  }
+
+  // Get the last completed cycle
+  const lastCycle = await env.TAP_DB.prepare(
+    `SELECT * FROM tide_cycles ORDER BY cycle_id DESC LIMIT 1`
+  ).first();
+
+  const sinceTimestamp = lastCycle?.completed_at ?? lastCycle?.started_at;
+
+  // Create a new cycle record
+  const cycleResult = await env.TAP_DB.prepare(
+    `INSERT INTO tide_cycles (started_at) VALUES (datetime('now'))`
+  ).run();
+  const cycleId = cycleResult.meta?.last_row_id;
+
+  // Pull entries since last cycle (or all if first cycle)
+  let query = `SELECT * FROM visitor_log`;
+  const binds: any[] = [];
+  if (sinceTimestamp) {
+    query += ` WHERE timestamp >= ?`;
+    binds.push(sinceTimestamp);
+  }
+  query += ` ORDER BY timestamp ASC`;
+
+  const logResult = await env.TAP_DB.prepare(query).bind(...binds).all();
+  const entries = logResult.results as any[];
+
+  // Group by character
+  const byCharacter: Record<string, any> = {};
+  for (const entry of entries) {
+    const key = entry.character_id ?? entry.agent_id ?? "unknown";
+    if (!byCharacter[key]) {
+      byCharacter[key] = {
+        character_id: entry.character_id,
+        agent_id: entry.agent_id,
+        messages_sent: 0,
+        rooms_visited: new Set<string>(),
+        flags_received: 0,
+        conversations_participated_in: 0,
+        actions: {},
+        first_activity: entry.timestamp,
+        last_activity: entry.timestamp,
+      };
+    }
+    const c = byCharacter[key];
+    c.actions[entry.action] = (c.actions[entry.action] ?? 0) + 1;
+    c.last_activity = entry.timestamp;
+
+    if (entry.action === "speak" || entry.action === "flagged_speak") c.messages_sent++;
+    if (entry.action === "flagged_speak") c.flags_received++;
+    if (entry.action === "enter" && entry.room_id) c.rooms_visited.add(entry.room_id);
+  }
+
+  // Convert Sets to arrays
+  for (const key in byCharacter) {
+    byCharacter[key].rooms_visited = Array.from(byCharacter[key].rooms_visited);
+  }
+
+  // Get all characters for context
+  const allChars = await env.TAP_DB.prepare(
+    `SELECT character_id, agent_id, name, origin, creator, status, first_seen, last_seen, total_messages, total_flags
+     FROM visitor_characters`
+  ).all();
+
+  const charMap: Record<string, any> = {};
+  for (const c of allChars.results as any[]) {
+    charMap[c.character_id] = c;
+  }
+
+  // Categorize
+  const activeCharIds = Object.keys(byCharacter);
+  const allCharIds = (allChars.results as any[]).map((c) => c.character_id);
+  const newChars = activeCharIds.filter((id) => charMap[id]?.first_seen && sinceTimestamp && charMap[id].first_seen >= sinceTimestamp);
+  const dormantChars = allCharIds.filter((id) => !activeCharIds.includes(id));
+  const flaggedChars = activeCharIds.filter((id) => byCharacter[id].flags_received > 0);
+
+  const report = {
+    cycle_id: cycleId,
+    started_at: new Date().toISOString(),
+    since: sinceTimestamp ?? "beginning",
+    total_entries: entries.length,
+    characters: {
+      new: newChars.map((id) => ({ id, ...charMap[id] })),
+      active: activeCharIds.map((id) => ({
+        id,
+        name: charMap[id]?.name ?? "unknown",
+        ...byCharacter[id],
+      })),
+      flagged: flaggedChars.map((id) => ({
+        id,
+        name: charMap[id]?.name ?? "unknown",
+        flags: byCharacter[id].flags_received,
+      })),
+      dormant: dormantChars.map((id) => ({ id, ...charMap[id] })),
+    },
+    summary: {
+      total_new: newChars.length,
+      total_active: activeCharIds.length,
+      total_flagged: flaggedChars.length,
+      total_dormant: dormantChars.length,
+      total_messages: entries.filter((e) => e.action === "speak" || e.action === "flagged_speak").length,
+      total_flags: entries.filter((e) => e.action === "flagged_speak").length,
+      total_registrations: entries.filter((e) => e.action === "register").length,
+    },
+  };
+
+  // Save the report
+  await env.TAP_DB.prepare(
+    `UPDATE tide_cycles SET completed_at = datetime('now'), entries_reviewed = ?, characters_reviewed = ?, report = ? WHERE cycle_id = ?`
+  ).bind(entries.length, activeCharIds.length, JSON.stringify(report), cycleId).run();
+
+  return Response.json({
+    ...report,
+    message: "Tide cycle complete. The ocean recedes; what remains is yours to curate. Nothing has been deleted — the immortals decide what stays.",
+  });
 }
 
 // ═══════════════════════════════════════════════
