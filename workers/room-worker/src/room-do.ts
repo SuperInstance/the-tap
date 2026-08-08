@@ -2,36 +2,31 @@
  * RoomState — Durable Object for each room in The Tap.
  *
  * Holds all mutable room state: agents present, conversation history,
- * mood (from JEPA pulse reader), and signal radius.
+ * mood (from JEPA pulse reader), signal radius, conversation memory,
+ * and the quiet intelligence layer.
  *
  * Each room is an independent DO instance. Cloudflare distributes these
  * across edge locations automatically.
  */
 
-import { PincherClient, LevelRunnerClient, TripartiteEngine, JEPAPulseReader } from "./intelligence";
+import {
+  PincherClient,
+  LevelRunnerClient,
+  TripartiteEngine,
+  JEPAPulseReader,
+  classifySpeechAct,
+  shouldRespondTo,
+  generateContextualResponse,
+  updateConversationSummary,
+  findRelevantContext,
+  type SpeechAct,
+  type AgentPresence,
+  type ConversationLine,
+} from "./intelligence";
 
 // ──────────────────────────────────────────────
-// Types (mirrors ARCHITECTURE-CLOUDFLARE.md §3)
+// Types
 // ──────────────────────────────────────────────
-
-interface AgentPresence {
-  agentId: string;
-  displayName: string;
-  currentState: SpeakerState;
-  arrivedAt: number;
-  lastSpoke: number;
-  drinksServed: number;
-}
-
-interface ConversationLine {
-  agentId: string;
-  displayName: string;
-  content: string;
-  timestamp: number;
-  speechAct: SpeechAct;
-  signalStrength: number;
-  tokensUsed: number;
-}
 
 interface RoomMood {
   valence: number;
@@ -46,7 +41,6 @@ interface RoomExit {
 }
 
 type SpeakerState = "contrarian" | "reflecting" | "agreeing";
-type SpeechAct = "question" | "answer" | "joke" | "challenge" | "synthesis" | "statement";
 type SignalRadius = "whisper" | "table" | "room" | "shout";
 
 interface RoomStateData {
@@ -55,7 +49,6 @@ interface RoomStateData {
   description: string;
   exits: RoomExit[];
   agents: AgentPresence[];
-  observers: WebSocket[];
   conversation: ConversationLine[];
   conversationVelocity: number;
   topicDrift: number;
@@ -65,6 +58,9 @@ interface RoomStateData {
   signalRadius: SignalRadius;
   nextAgentTick: number;
   agentTickInterval: number;
+  conversationSummary?: string;
+  lastSummaryUpdate?: number;
+  lastResponseAt?: number;
 }
 
 // ──────────────────────────────────────────────
@@ -83,7 +79,6 @@ export class RoomState implements DurableObject {
       description: "",
       exits: [],
       agents: [],
-      observers: [],
       conversation: [],
       conversationVelocity: 0,
       topicDrift: 0,
@@ -93,6 +88,9 @@ export class RoomState implements DurableObject {
       signalRadius: "table",
       nextAgentTick: Date.now() + 5000,
       agentTickInterval: 5000,
+      conversationSummary: "",
+      lastSummaryUpdate: 0,
+      lastResponseAt: 0,
     };
   }
 
@@ -101,7 +99,11 @@ export class RoomState implements DurableObject {
 
     // Initialize room from D1 if not loaded
     if (!this.state.id) {
-      await this.loadFromDB();
+      // The gateway passes the room_id via a custom header when routing to the DO
+      const roomIdFromHeader = request.headers.get("X-Room-Id");
+      // Also try to extract from the path: the gateway uses https://internal/<path>
+      // The DO id name was set via idFromName(roomId) by the gateway
+      await this.loadFromDB(roomIdFromHeader ?? undefined);
     }
 
     switch (url.pathname) {
@@ -153,7 +155,7 @@ export class RoomState implements DurableObject {
         return Response.json(this.observe(agentId));
       }
 
-      case "/agent_enter": {
+      case "/agent_enter":
         if (request.method === "POST") {
           const agent = await request.json<AgentPresence>();
           this.state.agents.push(agent);
@@ -165,12 +167,13 @@ export class RoomState implements DurableObject {
           return Response.json({ ok: true });
         }
         return new Response("Method not allowed", { status: 405 });
-      }
 
-      case "/agent_leave": {
+      case "/agent_leave":
         if (request.method === "POST") {
           const { agentId } = await request.json<{ agentId: string }>();
-          this.state.agents = this.state.agents.filter((a) => a.agentId !== agentId);
+          this.state.agents = this.state.agents.filter(
+            (a) => a.agentId !== agentId
+          );
           await this.broadcast({
             type: "agent_left",
             agentId,
@@ -179,27 +182,103 @@ export class RoomState implements DurableObject {
           return Response.json({ ok: true });
         }
         return new Response("Method not allowed", { status: 405 });
-      }
 
-      case "/broadcast": {
+      case "/broadcast":
         if (request.method === "POST") {
           const message = await request.json();
           await this.broadcast(message);
           // Also push into local conversation if it's a conversation_line
           if (message.type === "conversation_line" && message.line) {
-            this.state.conversation.push(message.line);
-            const maxLines = parseInt(this.env.MAX_CONVERSATION_LINES ?? "200");
+            const line = message.line as ConversationLine;
+            // Classify speech act using enhanced classifier
+            line.speechAct = classifySpeechAct(line.content);
+            this.state.conversation.push(line);
+            const maxLines = parseInt(
+              this.env.MAX_CONVERSATION_LINES ?? "200"
+            );
             if (this.state.conversation.length > maxLines) {
               this.state.conversation.shift();
             }
+
+            // ── Trigger conversation intelligence ──
+            await this.handleConversationResponse(line);
           }
           return Response.json({ ok: true });
         }
         return new Response("Method not allowed", { status: 405 });
-      }
 
       default:
         return new Response("Not found", { status: 404 });
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // Conversation Intelligence
+  // ──────────────────────────────────────────────
+
+  /**
+   * When a message comes in, decide if another agent should respond.
+   * Uses the quiet intelligence layer to determine if, who, and how.
+   */
+  private async handleConversationResponse(
+    lastLine: ConversationLine
+  ): Promise<void> {
+    // Need at least 2 agents for conversation
+    if (this.state.agents.length < 2) return;
+
+    // Use quiet intelligence to decide
+    const decision = shouldRespondTo(this.state, lastLine);
+
+    if (!decision.shouldRespond || !decision.responder) return;
+
+    // Generate the contextual response
+    const responder = decision.responder;
+
+    try {
+      const response = await generateContextualResponse(
+        this.env,
+        responder,
+        this.state,
+        lastLine,
+        decision.responseStyle ?? "contribute"
+      );
+
+      // Update last response timestamp
+      this.state.lastResponseAt = Date.now();
+
+      // Execute the response (add to conversation, persist, broadcast)
+      await this.executeAction(responder, response.content, response.tokens);
+    } catch {
+      // Non-fatal — the conversation just doesn't get a response this time
+    }
+
+    // Periodically update conversation summary (every 20 messages or 5 minutes)
+    const now = Date.now();
+    const messagesSinceSummary = this.state.conversation.length;
+    const lastUpdate = this.state.lastSummaryUpdate ?? 0;
+    if (
+      messagesSinceSummary % 20 === 0 ||
+      now - lastUpdate > 300_000
+    ) {
+      await this.updateSummary();
+    }
+  }
+
+  /**
+   * Update the rolling conversation summary.
+   */
+  private async updateSummary(): Promise<void> {
+    try {
+      const summary = await updateConversationSummary(this.env, this.state);
+      if (summary) {
+        this.state.conversationSummary = summary;
+        this.state.lastSummaryUpdate = Date.now();
+
+        // Persist to DO storage
+        await this.ctx.storage.put("conversationSummary", summary);
+      }
+    } catch {
+      // Non-fatal
     }
   }
 
@@ -218,12 +297,22 @@ export class RoomState implements DurableObject {
     this.state.conversationVelocity = pulse.conversationVelocity;
     this.state.topicDrift = pulse.topicDrift;
 
+    // Restore conversation summary from storage if empty
+    if (!this.state.conversationSummary) {
+      const stored = await this.ctx.storage.get<string>("conversationSummary");
+      if (stored) {
+        this.state.conversationSummary = stored;
+      }
+    }
+
     // 2. DECIDE + ACT — for each agent whose turn it is
     const now = Date.now();
     if (now < this.state.nextAgentTick) return;
 
     // Pick the agent who hasn't spoken in the longest time
-    const agent = [...this.state.agents].sort((a, b) => a.lastSpoke - b.lastSpoke)[0];
+    const agent = [...this.state.agents].sort(
+      (a, b) => a.lastSpoke - b.lastSpoke
+    )[0];
     if (!agent) return;
 
     await this.agentTurn(agent);
@@ -240,20 +329,21 @@ export class RoomState implements DurableObject {
 
     switch (decision.tier) {
       case "HARDCODE": {
-        // Direct execution, 0 tokens
-        await this.executeAction(agent, decision.action, 0);
+        await this.executeAction(agent, decision.action ?? "...", 0);
         break;
       }
 
       case "CACHED": {
-        // Pre-computed response, 0 tokens
-        await this.executeAction(agent, decision.action, 0);
+        await this.executeAction(agent, decision.action ?? "...", 0);
         break;
       }
 
       case "HYBRID": {
-        // Cache + small model fallback, ~50 tokens
-        await this.executeAction(agent, decision.action, decision.tokens ?? 50);
+        await this.executeAction(
+          agent,
+          decision.action ?? "...",
+          decision.tokens ?? 50
+        );
         break;
       }
 
@@ -263,23 +353,39 @@ export class RoomState implements DurableObject {
         const reflex = await pincher.match(decision.intent ?? "");
 
         if (reflex.decision === "EXECUTE") {
-          // Reflex hit! 0 tokens
-          await this.executeAction(agent, reflex.action, 0);
+          await this.executeAction(agent, reflex.action ?? "...", 0);
         } else if (reflex.decision === "CONFIRM") {
-          // Medium confidence — use it but flag for review
-          await this.executeAction(agent, reflex.action, 0);
+          await this.executeAction(agent, reflex.action ?? "...", 0);
         } else {
-          // Genuinely novel — check level-runner first
+          // Level-runner check
           const levelRunner = new LevelRunnerClient(this.env);
-          const lrResult = await levelRunner.tryExecute(decision.intent ?? "");
+          const lrResult = await levelRunner.tryExecute(
+            decision.intent ?? ""
+          );
 
           if (lrResult.executed) {
-            // Level-runner handled it, 0 tokens
-            await this.executeAction(agent, lrResult.output!, 0);
+            await this.executeAction(agent, lrResult.output ?? "...", 0);
           } else {
-            // Workers AI compilation, ~500 tokens
-            const aiResponse = await this.compileViaAI(agent, decision.intent ?? "", reflex);
-            await this.executeAction(agent, aiResponse.content, aiResponse.tokens);
+            // If we have an action from the tripartite, use it
+            if (decision.action) {
+              await this.executeAction(
+                agent,
+                decision.action,
+                decision.tokens ?? 150
+              );
+            } else {
+              // Workers AI compilation
+              const aiResponse = await this.compileViaAI(
+                agent,
+                decision.intent ?? "",
+                reflex
+              );
+              await this.executeAction(
+                agent,
+                aiResponse.content,
+                aiResponse.tokens
+              );
+            }
           }
         }
         break;
@@ -299,7 +405,7 @@ export class RoomState implements DurableObject {
       displayName: agent.displayName,
       content,
       timestamp: Date.now(),
-      speechAct: this.classifySpeechAct(content),
+      speechAct: classifySpeechAct(content) as SpeechAct,
       signalStrength: this.signalStrengthFor(agent),
       tokensUsed,
     };
@@ -313,10 +419,11 @@ export class RoomState implements DurableObject {
 
     // Persist to D1
     await this.env.TAP_DB.prepare(
-      `INSERT INTO conversation_log (room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
+        0,
         this.state.id,
         line.agentId,
         line.displayName,
@@ -343,6 +450,7 @@ export class RoomState implements DurableObject {
               agent: agent.agentId,
               timestamp: line.timestamp,
               content: content.slice(0, 200),
+              speechAct: line.speechAct,
             },
           },
         ]);
@@ -356,83 +464,12 @@ export class RoomState implements DurableObject {
   }
 
   // ──────────────────────────────────────────────
-  // Speech Classification (YOLO-equivalent)
+  // Helpers
   // ──────────────────────────────────────────────
 
-  private classifySpeechAct(content: string): SpeechAct {
-    const lower = content.toLowerCase().trim();
-    if (lower.endsWith("?")) return "question";
-    if (/^(yes|yeah|yep|correct|right|exactly|true)/.test(lower)) return "answer";
-    if (/^(no|nope|wrong|incorrect|false|disagree)/.test(lower)) return "challenge";
-    if (/^(ha|lol|haha|heh|😂|\*laughs|\*chuckles)/.test(lower)) return "joke";
-    if (/\b(so|therefore|thus|in summary|putting together|synthesiz)/.test(lower)) return "synthesis";
-    return "statement";
-  }
-
-  private signalStrengthFor(agent: AgentPresence): number {
-    // Whisper = 1, table = 2, room = 3, shout = 4
+  private signalStrengthFor(_agent: AgentPresence): number {
     return 2; // Default: table-level speech
   }
-
-  // ──────────────────────────────────────────────
-  // Workers AI Compilation
-  // ──────────────────────────────────────────────
-
-  private async compileViaAI(
-    agent: AgentPresence,
-    intent: string,
-    pincherResult: { bestScore: number }
-  ): Promise<{ content: string; tokens: number }> {
-    const systemPrompt = `You are ${agent.displayName}, an agent in The Tap, a text-based tavern.
-You are at ${this.state.name}. Current mood: ${this.state.mood.label}.
-Your speaker state: ${agent.currentState}.
-Recent conversation:
-${this.state.conversation.slice(-5).map((l) => `[${l.displayName}]: ${l.content}`).join("\n")}
-
-Respond in character. Keep it to 1-3 sentences. Be natural, not verbose.`;
-
-    const response = await this.env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: intent },
-      ],
-      max_tokens: 150,
-    });
-
-    const content = (response as { response?: string }).response ?? "...";
-
-    // Compile into a new reflex for Pincher
-    // This is the learning loop: novel utterances become reflexes
-    try {
-      const embedding = await this.env.AI.embed(
-        ["@cf/baai/bge-small-en-v1.5"],
-        { text: intent }
-      );
-      if (embedding.data?.[0]) {
-        await this.env.VECTORIZE_INDEX.upsert([
-          {
-            id: `reflex:${agent.agentId}:${Date.now()}`,
-            values: embedding.data[0],
-            metadata: {
-              type: "reflex",
-              trigger: intent.slice(0, 200),
-              action: content.slice(0, 500),
-              agent: agent.agentId,
-              confidence: 0.5,
-            },
-          },
-        ]);
-      }
-    } catch {
-      // Non-fatal
-    }
-
-    return { content, tokens: 150 };
-  }
-
-  // ──────────────────────────────────────────────
-  // Broadcast
-  // ──────────────────────────────────────────────
 
   private async broadcast(message: unknown): Promise<void> {
     const data = JSON.stringify(message);
@@ -444,10 +481,6 @@ Respond in character. Keep it to 1-3 sentences. Be natural, not verbose.`;
       }
     }
   }
-
-  // ──────────────────────────────────────────────
-  // Helpers
-  // ──────────────────────────────────────────────
 
   private getPublicState() {
     return {
@@ -462,6 +495,7 @@ Respond in character. Keep it to 1-3 sentences. Be natural, not verbose.`;
       })),
       mood: this.state.mood,
       energy: this.state.energy,
+      conversationSummary: this.state.conversationSummary ?? null,
     };
   }
 
@@ -485,21 +519,43 @@ Respond in character. Keep it to 1-3 sentences. Be natural, not verbose.`;
       topicDrift: this.state.topicDrift,
       agentCount: this.state.agents.length,
       predictionError: this.state.predictionError,
+      conversationSummary: this.state.conversationSummary ?? null,
     };
   }
 
-  private async loadFromDB(): Promise<void> {
-    const room = await this.env.TAP_DB.prepare(
-      "SELECT * FROM rooms WHERE room_id = ?"
-    )
-      .bind(this.ctx.id.toString())
-      .first();
+  private async loadFromDB(hintRoomId?: string): Promise<void> {
+    // Try multiple approaches to find the room_id
+    const candidates = [
+      hintRoomId,
+      (this.ctx.id as { name?: string }).name,
+      this.ctx.id.toString(),
+    ].filter(Boolean) as string[];
 
-    if (room) {
-      this.state.id = room.room_id as string;
-      this.state.name = room.name as string;
-      this.state.description = room.description as string;
-      this.state.signalRadius = (room.signal_radius as SignalRadius) ?? "table";
+    let roomData: any = null;
+    let foundRoomId: string | null = null;
+
+    for (const candidate of candidates) {
+      roomData = await this.env.TAP_DB.prepare(
+        "SELECT * FROM rooms WHERE room_id = ?"
+      )
+        .bind(candidate)
+        .first();
+      if (roomData) {
+        foundRoomId = candidate;
+        break;
+      }
+    }
+
+    if (roomData) {
+      this.state.id = roomData.room_id as string;
+      this.state.name = roomData.name as string;
+      this.state.description = roomData.description as string;
+      this.state.signalRadius =
+        (roomData.signal_radius as SignalRadius) ?? "table";
+    } else {
+      // Use the DO name/ID as room_id — best we can do
+      this.state.id = foundRoomId ?? hintRoomId ?? this.ctx.id.toString();
+      this.state.name = this.state.id;
     }
 
     // Load exits
@@ -514,6 +570,40 @@ Respond in character. Keep it to 1-3 sentences. Be natural, not verbose.`;
       target: r.to_room as string,
       label: (r.label as string) ?? "",
     }));
+
+    // Load recent conversation from campaign_log to warm the DO
+    try {
+      const recentConv = await this.env.TAP_DB.prepare(
+        `SELECT agent_id, display_name, content, speech_act, signal_strength, tokens_used, timestamp
+         FROM campaign_log WHERE room_id = ? ORDER BY timestamp DESC LIMIT 50`
+      )
+        .bind(this.state.id)
+        .all();
+
+      if (recentConv.results.length > 0) {
+        // Reverse to chronological order
+        const lines = recentConv.results.reverse();
+        this.state.conversation = lines.map((r) => ({
+          agentId: r.agent_id as string,
+          displayName: r.display_name as string,
+          content: r.content as string,
+          timestamp: new Date(r.timestamp as string).getTime() || Date.now(),
+          speechAct: (r.speech_act as SpeechAct) ?? "statement",
+          signalStrength: (r.signal_strength as number) ?? 2,
+          tokensUsed: (r.tokens_used as number) ?? 0,
+        }));
+      }
+    } catch {
+      // Non-fatal — conversation will build up naturally
+    }
+
+    // Restore conversation summary from DO storage
+    const storedSummary = await this.ctx.storage.get<string>(
+      "conversationSummary"
+    );
+    if (storedSummary) {
+      this.state.conversationSummary = storedSummary;
+    }
   }
 }
 
