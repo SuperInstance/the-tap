@@ -2145,13 +2145,46 @@ async function handleRoomState(roomId: string, env: Env): Promise<Response> {
 // ──────────────────────────────────────────────
 
 function classifySpeechAct(content: string): string {
+  // Import the enhanced classifier from the intelligence module
+  // This is the canonical classifier — used everywhere speech acts matter
   const lower = content.toLowerCase().trim();
-  if (lower.endsWith("?")) return "question";
-  if (/^(yes|yeah|yep|correct|right|exactly|true)/.test(lower)) return "answer";
-  if (/^(no|nope|wrong|incorrect|false|disagree)/.test(lower)) return "challenge";
-  if (/^(ha|lol|haha|heh|\*laughs|\*chuckles)/.test(lower)) return "joke";
-  if (/\b(so|therefore|thus|in summary|putting together|synthesiz)/.test(lower)) return "synthesis";
-  if (/^\*/.test(lower)) return "emote";
+
+  // Emotes
+  if (/^\*/.test(lower) || /\*$/.test(lower)) return "emote";
+
+  // Departure
+  if (/^(goodbye|bye|farewell|good night|goodnight|gnight|i'?m out|leaving|heading out|calling it a night|time to go|off to bed|see you|see ya|catch you later|later|cya|peace out|i'?m leaving)\b/.test(lower)) return "departure";
+
+  // Greeting
+  if (/^(hello|hi|hey|howdy|greetings|welcome|yo|sup|what'?s up|wassup|good morning|good evening|good afternoon|anyone here|is anyone|who'?s here)\b/.test(lower)) return "greeting";
+
+  // Toast
+  if (/\b(cheers|to you|to the|a toast|raise.?your glass|here'?s to|to your health|prosit|skål|kanpai|drink to|let'?s drink|to that)\b/.test(lower) || /^to\s+\w+/.test(lower)) return "toast";
+
+  // Question
+  if (lower.endsWith("?") || /^(what|who|where|when|why|how|which|whose|whom|can you|could you|would you|will you|do you|did you|are you|is it|is there|should we|shall we|tell me|explain)\b/.test(lower)) return "question";
+
+  // Answer
+  if (/^(yes|yeah|yep|correct|right|exactly|true|sure|absolutely|indeed|of course|you bet)\b/.test(lower)) return "answer";
+
+  // Challenge
+  if (/^(no|nope|wrong|incorrect|false|disagree|not really|i don'?t think|that'?s not|i doubt|hardly|counterpoint|but actually)\b/.test(lower)) return "challenge";
+
+  // Joke
+  if (/^(ha|lol|haha|heh|lmao|rofl|\*laughs|\*chuckles|\*snorts|that'?s funny|you killed me|good one|nice one)\b/.test(lower) || /\b(knock knock|why did|what do you call|how many .+ does it take)\b/.test(lower)) return "joke";
+
+  // Confession
+  if (/\b(i have to admit|i confess|i'?ll be honest|honestly|i feel|i'?ve been thinking|i'?ve been wondering|to tell the truth|between you and me|i haven'?t told anyone|secretly|deep down|i'?m scared|i'?m worried|i'?m not sure if|i regret|if i'?m being honest)\b/.test(lower)) return "confession";
+
+  // Story
+  if (/^(so |once|there was|back when|i remember|years ago|the other day|this one time|funny story|strange story|you know what happened|reminds me of)\b/.test(lower) || lower.split(" ").length > 30) return "story";
+
+  // Synthesis
+  if (/\b(so|therefore|thus|in summary|putting together|synthesiz|to sum up|in conclusion|the bottom line|what this means|tie it together|bringing it back)\b/.test(lower)) return "synthesis";
+
+  // Observation
+  if (/^(i notice|i see|i'?ve noticed|it seems|it appears|interesting that|curious that|worth noting|the thing about|what strikes me|you know what i'?ve noticed|pattern i see)\b/.test(lower)) return "observation";
+
   return "statement";
 }
 
