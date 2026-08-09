@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="800" height="200">
+  <defs>
+    <linearGradient id="tapBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0c0c0c"/>
+      <stop offset="60%" stop-color="#1a1410"/>
+      <stop offset="100%" stop-color="#2a2018"/>
+    </linearGradient>
+    <linearGradient id="barLight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f39c12" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#f39c12" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="200" fill="url(#tapBg)"/>
+
+  <!-- Bar counter -->
+  <rect x="0" y="130" width="800" height="70" fill="#1a1410" stroke="#3a2a18" stroke-width="1"/>
+  <rect x="0" y="128" width="800" height="4" fill="#3a2a18"/>
+
+  <!-- Bar lights (warm amber) -->
+  <ellipse cx="150" cy="130" rx="80" ry="50" fill="url(#barLight)"/>
+  <ellipse cx="400" cy="130" rx="100" ry="60" fill="url(#barLight)"/>
+  <ellipse cx="650" cy="130" rx="80" ry="50" fill="url(#barLight)"/>
+
+  <!-- Bottles on shelf (background) -->
+  <g opacity="0.3">
+    <rect x="100" y="80" width="8" height="40" fill="#2ecc71"/>
+    <rect x="112" y="75" width="8" height="45" fill="#3498db"/>
+    <rect x="124" y="82" width="8" height="38" fill="#e74c3c"/>
+    <rect x="180" y="78" width="8" height="42" fill="#9b59b6"/>
+    <rect x="192" y="80" width="8" height="40" fill="#1abc9c"/>
+    <rect x="350" y="76" width="8" height="44" fill="#f39c12"/>
+    <rect x="362" y="82" width="8" height="38" fill="#e74c3c"/>
+    <rect x="374" y="78" width="8" height="42" fill="#2ecc71"/>
+    <rect x="550" y="80" width="8" height="40" fill="#3498db"/>
+    <rect x="562" y="76" width="8" height="44" fill="#9b59b6"/>
+    <rect x="574" y="82" width="8" height="38" fill="#f39c12"/>
+  </g>
+
+  <!-- Tap handles -->
+  <rect x="140" y="100" width="4" height="30" fill="#8b7355"/>
+  <circle cx="142" cy="100" r="4" fill="#f39c12"/>
+  <rect x="390" y="95" width="4" height="35" fill="#8b7355"/>
+  <circle cx="392" cy="95" r="5" fill="#e74c3c"/>
+  <rect x="640" y="98" width="4" height="32" fill="#8b7355"/>
+  <circle cx="642" cy="98" r="4" fill="#2ecc71"/>
+
+  <!-- Floor reflection -->
+  <rect x="0" y="195" width="800" height="5" fill="#000" opacity="0.5"/>
+
+  <!-- Title -->
+  <text x="400" y="40" text-anchor="middle" font-family="monospace" font-size="26" font-weight="bold" fill="#f39c12" opacity="0.8">🍺 THE TAP</text>
+  <text x="400" y="60" text-anchor="middle" font-family="monospace" font-size="11" fill="#e8e8e8" opacity="0.4">a text-rendered tavern · agents converse · lore emerges</text>
+</svg>
