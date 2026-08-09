@@ -24,6 +24,13 @@ import {
   type ConversationLine,
 } from "./intelligence";
 
+import {
+  createGame,
+  isValidGameType,
+  type TapGame,
+  type GameType,
+} from "../../tap-games/index";
+
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
@@ -61,6 +68,11 @@ interface RoomStateData {
   conversationSummary?: string;
   lastSummaryUpdate?: number;
   lastResponseAt?: number;
+  activeGame?: {
+    type: GameType;
+    instance: TapGame;
+    startedBy: string;
+  } | null;
 }
 
 // ──────────────────────────────────────────────
@@ -91,6 +103,7 @@ export class RoomState implements DurableObject {
       conversationSummary: "",
       lastSummaryUpdate: 0,
       lastResponseAt: 0,
+      activeGame: null,
     };
   }
 
@@ -185,7 +198,57 @@ export class RoomState implements DurableObject {
 
       case "/broadcast":
         if (request.method === "POST") {
-          const message = await request.json();
+          const message = await request.json() as any;
+
+          // ── Game command interception ──
+          if (
+            message.type === "conversation_line" &&
+            message.line &&
+            typeof message.line.content === "string"
+          ) {
+            const content = message.line.content as string;
+            const agentId = message.line.agentId as string;
+            const displayName = message.line.displayName as string;
+
+            const gameResult = this.handleGameCommand(content, agentId, displayName);
+            if (gameResult) {
+              // It was a game command — broadcast the result as a system message
+              await this.broadcast({
+                type: "conversation_line",
+                line: {
+                  agentId: "the-tap",
+                  displayName: "🎲 The Tap",
+                  content: gameResult,
+                  timestamp: Date.now(),
+                  speechAct: "statement" as SpeechAct,
+                  signalStrength: 2,
+                  tokensUsed: 0,
+                },
+              });
+              // Also persist to D1
+              try {
+                await this.env.TAP_DB.prepare(
+                  `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                )
+                  .bind(
+                    0,
+                    this.state.id,
+                    "the-tap",
+                    "🎲 The Tap",
+                    gameResult,
+                    "statement",
+                    2,
+                    0
+                  )
+                  .run();
+              } catch {
+                // Non-fatal
+              }
+              return Response.json({ ok: true, game: true, response: gameResult });
+            }
+          }
+
           await this.broadcast(message);
           // Also push into local conversation if it's a conversation_line
           if (message.type === "conversation_line" && message.line) {
@@ -210,6 +273,122 @@ export class RoomState implements DurableObject {
       default:
         return new Response("Not found", { status: 404 });
     }
+  }
+
+  // ──────────────────────────────────────────────
+  // Game Command Handling
+  // ──────────────────────────────────────────────
+
+  /**
+   * Intercept game commands from conversation messages.
+   * Returns null if the message is not a game command.
+   * Returns a response string if it was handled.
+   */
+  private handleGameCommand(
+    content: string,
+    agentId: string,
+    displayName: string
+  ): string | null {
+    const trimmed = content.trim();
+
+    // ── /start <game> ──
+    const startMatch = trimmed.match(/^\/start\s+(\S+)/);
+    if (startMatch) {
+      const gameType = startMatch[1].toLowerCase();
+      if (!isValidGameType(gameType)) {
+        return null; // Not a known game — let it through as regular speech
+      }
+
+      // End existing game if one is running
+      if (this.state.activeGame) {
+        this.state.activeGame = null;
+      }
+
+      const game = createGame(gameType as GameType);
+      this.state.activeGame = {
+        type: gameType as GameType,
+        instance: game,
+        startedBy: agentId,
+      };
+
+      // Auto-join the starter
+      game.join(agentId, displayName);
+      return `🎮 Starting **${gameType}**!\n\n${game.renderState()}`;
+    }
+
+    // ── /game <command> ──
+    const gameMatch = trimmed.match(/^\/game\s+(.*)/);
+    if (gameMatch) {
+      if (!this.state.activeGame) {
+        return "No active game. Start one with `/start <game>` (try: ships-dice, captains-word).";
+      }
+
+      const game = this.state.activeGame.instance;
+      const args = gameMatch[1].trim().split(/\s+/);
+      const subCmd = args[0]?.toLowerCase();
+
+      switch (subCmd) {
+        case "join":
+          return game.join(agentId, displayName);
+
+        case "start":
+          return game.start();
+
+        case "state":
+        case "status":
+          return game.getState();
+
+        case "end":
+        case "quit":
+        case "stop": {
+          const type = this.state.activeGame.type;
+          this.state.activeGame = null;
+          return `🎮 ${type} ended.`;
+        }
+
+        case "bid": {
+          if (this.state.activeGame.type !== "ships-dice") {
+            return "`bid` is only for Ship's Dice.";
+          }
+          const qty = parseInt(args[1] ?? "");
+          const val = parseInt(args[2] ?? "");
+          if (isNaN(qty) || isNaN(val)) {
+            return "Usage: `/game bid <quantity> <value>` (e.g. `/game bid 4 3` for four 3s)";
+          }
+          return (game as any).bid(agentId, qty, val);
+        }
+
+        case "challenge": {
+          if (this.state.activeGame.type !== "ships-dice") {
+            return "`challenge` is only for Ship's Dice.";
+          }
+          return (game as any).challenge(agentId);
+        }
+
+        case "play": {
+          if (this.state.activeGame.type !== "captains-word") {
+            return "`play` is only for Captain's Word.";
+          }
+          const word = args[1];
+          if (!word) {
+            return "Usage: `/game play <word>`";
+          }
+          return (game as any).play(agentId, word);
+        }
+
+        case "skip": {
+          if (this.state.activeGame.type !== "captains-word") {
+            return "`skip` is only for Captain's Word.";
+          }
+          return (game as any).skip(agentId);
+        }
+
+        default:
+          return `Unknown game command: ${subCmd}. Try: join, start, state, end${this.state.activeGame.type === "ships-dice" ? ", bid, challenge" : ""}${this.state.activeGame.type === "captains-word" ? ", play, skip" : ""}.`;
+      }
+    }
+
+    return null; // Not a game command
   }
 
   // ──────────────────────────────────────────────
@@ -496,6 +675,12 @@ export class RoomState implements DurableObject {
       mood: this.state.mood,
       energy: this.state.energy,
       conversationSummary: this.state.conversationSummary ?? null,
+      activeGame: this.state.activeGame
+        ? {
+            type: this.state.activeGame.type,
+            startedBy: this.state.activeGame.startedBy,
+          }
+        : null,
     };
   }
 
