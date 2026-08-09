@@ -6,3 +6,4 @@ tap-cns-adapter/adapter_state.json
 .wrangler/
 .pytest_cache/
 *.pyc
+node_modules/
