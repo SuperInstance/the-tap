@@ -21,6 +21,7 @@ pub struct HashEmbedder {
 
 impl HashEmbedder {
     pub fn new(dims: usize) -> Self {
+        assert!(dims > 0, "HashEmbedder requires at least 1 dimension");
         Self { dims }
     }
 }
@@ -43,6 +44,9 @@ impl Embedder for HashEmbedder {
 }
 
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() {
+        return 0.0;
+    }
     let dot: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
     let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
     let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -209,6 +213,19 @@ mod tests {
     fn cosine_similarity_of_orthogonal_vectors_is_zero() {
         let a = vec![1.0, 0.0];
         let b = vec![0.0, 1.0];
+        assert!(cosine_similarity(&a, &b).abs() < 1e-6);
+    }
+
+    #[test]
+    #[should_panic(expected = "at least 1 dimension")]
+    fn hash_embedder_zero_dims_panics() {
+        let _ = HashEmbedder::new(0);
+    }
+
+    #[test]
+    fn cosine_similarity_mismatched_lengths_returns_zero() {
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![1.0, 2.0];
         assert!(cosine_similarity(&a, &b).abs() < 1e-6);
     }
 }

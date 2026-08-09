@@ -59,6 +59,8 @@ pub enum RoomError {
     NoSuchExit(RoomId, Direction),
     #[error("agent {0} is not in room {1}")]
     AgentNotPresent(AgentId, RoomId),
+    #[error("item {0} is not in room {1}")]
+    ItemNotPresent(ItemId, RoomId),
     #[error("exit {dir:?} from room {room} already leads to {existing_dest}, cannot redirect to {new_dest}")]
     ExitConflict {
         room: RoomId,
@@ -181,7 +183,21 @@ impl RoomGraph {
 
     pub fn place_item(&mut self, item: ItemId, room: RoomId) -> Result<(), RoomError> {
         let room = self.rooms.get_mut(&room).ok_or(RoomError::NoSuchRoom(room))?;
-        room.items.push(item);
+        if !room.items.contains(&item) {
+            room.items.push(item);
+        }
+        Ok(())
+    }
+
+    /// Remove an item from a room. Returns `Err` if the room or item doesn't exist.
+    pub fn remove_item(&mut self, item: ItemId, room: RoomId) -> Result<(), RoomError> {
+        let r = self.rooms.get_mut(&room).ok_or(RoomError::NoSuchRoom(room))?;
+        let idx = r
+            .items
+            .iter()
+            .position(|i| *i == item)
+            .ok_or(RoomError::ItemNotPresent(item, room))?;
+        r.items.remove(idx);
         Ok(())
     }
 
@@ -374,5 +390,37 @@ mod tests {
         let room = tick(&mut g, &mut actor, 1, 1, 1).unwrap();
         assert_eq!(room, 2);
         assert_eq!(actor.seen_agents, 1); // saw itself before moving
+    }
+
+    #[test]
+    fn place_item_is_idempotent() {
+        let mut g = linear_graph();
+        g.place_item(7, 1).unwrap();
+        g.place_item(7, 1).unwrap(); // duplicate should be ignored
+        assert_eq!(g.room(1).unwrap().items.len(), 1);
+    }
+
+    #[test]
+    fn remove_item_works() {
+        let mut g = linear_graph();
+        g.place_item(7, 2).unwrap();
+        g.place_item(8, 2).unwrap();
+        g.remove_item(7, 2).unwrap();
+        assert_eq!(g.room(2).unwrap().items.len(), 1);
+        assert_eq!(g.room(2).unwrap().items[0], 8);
+    }
+
+    #[test]
+    fn remove_item_missing_returns_error() {
+        let mut g = linear_graph();
+        let err = g.remove_item(999, 1).unwrap_err();
+        assert!(matches!(err, RoomError::ItemNotPresent(999, 1)));
+    }
+
+    #[test]
+    fn place_item_nonexistent_room_fails() {
+        let mut g = linear_graph();
+        let err = g.place_item(1, 999).unwrap_err();
+        assert!(matches!(err, RoomError::NoSuchRoom(999)));
     }
 }
