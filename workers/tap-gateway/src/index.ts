@@ -1604,11 +1604,12 @@ async function handleApiSpeak(request: Request, env: Env): Promise<Response> {
 
   // Broadcast to room DO for WebSocket observers (unless ignored)
   const shouldBroadcast = character?.status !== 'ignored';
+  let gameResponse: string | null = null;
   if (shouldBroadcast) {
     try {
       const doId = env.ROOM_DO.idFromName(room_id);
       const stub = env.ROOM_DO.get(doId);
-      await stub.fetch("https://internal/broadcast", {
+      const doResponse = await stub.fetch("https://internal/broadcast", {
         method: "POST",
         body: JSON.stringify({
           type: "conversation_line",
@@ -1624,6 +1625,13 @@ async function handleApiSpeak(request: Request, env: Env): Promise<Response> {
           },
         }),
       });
+      // Check if the DO handled this as a game command
+      if (doResponse.ok) {
+        const doResult = await doResponse.json() as any;
+        if (doResult.game && doResult.response) {
+          gameResponse = doResult.response;
+        }
+      }
     } catch {
       // Non-fatal — message is persisted even if broadcast fails
     }
@@ -1639,6 +1647,7 @@ async function handleApiSpeak(request: Request, env: Env): Promise<Response> {
     timestamp: now,
     flagged: flags.any_flagged || undefined,
     character_id: characterId || undefined,
+    game: gameResponse || undefined,
   });
 }
 
