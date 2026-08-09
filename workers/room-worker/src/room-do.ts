@@ -320,7 +320,7 @@ export class RoomState implements DurableObject {
     const gameMatch = trimmed.match(/^\/game\s+(.*)/);
     if (gameMatch) {
       if (!this.state.activeGame) {
-        return "No active game. Start one with `/start <game>` (try: ships-dice, captains-word).";
+        return "No active game. Start one with `/start <game>` (try: ships-dice, captains-word, pilots-chart, standing-game, tribunal, the-signal).";
       }
 
       const game = this.state.activeGame.instance;
@@ -383,8 +383,129 @@ export class RoomState implements DurableObject {
           return (game as any).skip(agentId);
         }
 
-        default:
-          return `Unknown game command: ${subCmd}. Try: join, start, state, end${this.state.activeGame.type === "ships-dice" ? ", bid, challenge" : ""}${this.state.activeGame.type === "captains-word" ? ", play, skip" : ""}.`;
+        // ── Pilot's Chart commands ──
+        case "describe": {
+          if (this.state.activeGame.type !== "pilots-chart") {
+            return "`describe` is only for The Pilot's Chart.";
+          }
+          const descText = args.slice(1).join(" ");
+          if (!descText) return "Usage: `/game describe <scene text>`";
+          return (game as any).describe(agentId, descText);
+        }
+
+        case "propose": {
+          const proposeText = args.slice(1).join(" ");
+          if (this.state.activeGame.type === "pilots-chart") {
+            if (!proposeText) return "Usage: `/game propose <your action>`";
+            return (game as any).propose(agentId, proposeText);
+          }
+          if (this.state.activeGame.type === "the-signal") {
+            // Signal uses: propose <comma words> | <meaning>
+            const pipeIdx = proposeText.indexOf("|");
+            if (pipeIdx < 0) return "Usage: `/game propose <comma-separated words> | <meaning>`";
+            const arrangement = proposeText.slice(0, pipeIdx).trim();
+            const meaning = proposeText.slice(pipeIdx + 1).trim();
+            if (!arrangement || !meaning) return "Usage: `/game propose <comma-separated words> | <meaning>`";
+            return (game as any).propose(agentId, arrangement, meaning);
+          }
+          return "`propose` is only for The Pilot's Chart or The Signal.";
+        }
+
+        case "resolve": {
+          if (this.state.activeGame.type !== "pilots-chart" && this.state.activeGame.type !== "tribunal") {
+            return "`resolve` is only for The Pilot's Chart or The Tribunal.";
+          }
+          const resolveText = args.slice(1).join(" ");
+          if (!resolveText) {
+            return this.state.activeGame.type === "pilots-chart"
+              ? "Usage: `/game resolve <outcome text>`"
+              : "Usage: `/game resolve` (advances tribunal)";
+          }
+          if (this.state.activeGame.type === "pilots-chart") {
+            return (game as any).resolve(agentId, resolveText);
+          }
+          return (game as any).resolve(agentId);
+        }
+
+        // ── Standing Game commands ──
+        case "move": {
+          if (this.state.activeGame.type !== "standing-game") {
+            return "`move` is only for The Standing Game.";
+          }
+          const fromSq = args[1];
+          const toSq = args[2];
+          const motivation = args.slice(3).join(" ");
+          if (!fromSq || !toSq || !motivation) {
+            return "Usage: `/game move <from> <to> <motivation>` (e.g. `/game move e2 e4 ambition`)";
+          }
+          return (game as any).move(agentId, fromSq, toSq, motivation);
+        }
+
+        // ── Tribunal commands ──
+        case "present": {
+          if (this.state.activeGame.type !== "tribunal") {
+            return "`present` is only for The Tribunal.";
+          }
+          const evidenceText = args.slice(1).join(" ");
+          if (!evidenceText) return "Usage: `/game present <evidence description>`";
+          return (game as any).present(agentId, evidenceText);
+        }
+
+        case "argue": {
+          if (this.state.activeGame.type !== "tribunal") {
+            return "`argue` is only for The Tribunal.";
+          }
+          const argueText = args.slice(1).join(" ");
+          if (!argueText) return "Usage: `/game argue <argument text>`";
+          return (game as any).argue(agentId, argueText);
+        }
+
+        case "advance": {
+          if (this.state.activeGame.type !== "tribunal") {
+            return "`advance` is only for The Tribunal.";
+          }
+          return (game as any).advance(agentId);
+        }
+
+        // ── The Signal commands ──
+        case "vote": {
+          if (this.state.activeGame.type !== "tribunal" && this.state.activeGame.type !== "the-signal") {
+            return "`vote` is only for The Tribunal or The Signal.";
+          }
+          if (this.state.activeGame.type === "tribunal") {
+            const voteChoice = args[1]?.toLowerCase();
+            const reasoning = args.slice(2).join(" ");
+            if (voteChoice !== "guilty" && voteChoice !== "innocent") {
+              return "Usage: `/game vote <guilty|innocent> <reasoning>`";
+            }
+            return (game as any).vote(agentId, voteChoice, reasoning);
+          }
+          // The Signal
+          const proposalId = args[1];
+          if (!proposalId) return "Usage: `/game vote <proposal-id>`";
+          return (game as any).vote(agentId, proposalId);
+        }
+
+        case "beginvote": {
+          if (this.state.activeGame.type !== "the-signal") {
+            return "`beginvote` is only for The Signal.";
+          }
+          return (game as any).beginVote(agentId);
+        }
+
+        default: {
+          const gameCmds: Record<string, string[]> = {
+            "ships-dice": ["join", "start", "state", "end", "bid", "challenge"],
+            "captains-word": ["join", "start", "state", "end", "play", "skip"],
+            "pilots-chart": ["join", "start", "state", "end", "describe", "propose", "resolve"],
+            "standing-game": ["join", "start", "state", "end", "move"],
+            "tribunal": ["join", "start", "state", "end", "present", "argue", "advance", "vote"],
+            "the-signal": ["join", "start", "state", "end", "propose", "vote", "beginvote"],
+          };
+          const activeType = this.state.activeGame.type;
+          const cmds = gameCmds[activeType] ?? ["join", "start", "state", "end"];
+          return `Unknown game command: ${subCmd}. Try: ${cmds.join(", ")}.`;
+        }
       }
     }
 
