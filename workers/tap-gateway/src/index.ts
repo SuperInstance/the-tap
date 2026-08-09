@@ -7,6 +7,17 @@
 
 export { RoomState } from "../../room-worker/src/room-do";
 
+import {
+  handleGetBridge as bridgeGetBridge,
+  handleRenderBridge as bridgeRender,
+  handleGetDock as bridgeGetDock,
+  handleGetFleetStatus as bridgeGetFleet,
+  handleGetAgentTasks as bridgeGetAgentTasks,
+  handlePostTask as bridgePostTask,
+  handleUpdateTaskStatus as bridgeUpdateTask,
+  handleUpdateFleetStatus as bridgeUpdateFleet,
+} from "../../tap-games/bridge-api";
+
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
@@ -350,6 +361,52 @@ export default {
     // GET /api/visitors — List all visitor characters
     if (path === "/api/visitors" && method === "GET") {
       return handleListVisitors(env);
+    }
+
+    // ── The Bridge Routes ──
+
+    // GET /api/bridge — Full Bridge room data (JSON)
+    if (path === "/api/bridge" && method === "GET") {
+      return bridgeGetBridge(env);
+    }
+
+    // GET /api/bridge/render — Rendered text version of The Bridge
+    if (path === "/api/bridge/render" && method === "GET") {
+      return bridgeRender(env);
+    }
+
+    // GET /api/bridge/dock — Tomorrow's Dock tasks
+    if (path === "/api/bridge/dock" && method === "GET") {
+      const dockDate = url.searchParams.get("date") ?? undefined;
+      return bridgeGetDock(env, dockDate);
+    }
+
+    // GET /api/bridge/fleet — Fleet status board
+    if (path === "/api/bridge/fleet" && method === "GET") {
+      return bridgeGetFleet(env);
+    }
+
+    // POST /api/bridge/fleet — Update fleet status for an agent
+    if (path === "/api/bridge/fleet" && method === "POST") {
+      return bridgeUpdateFleet(request, env);
+    }
+
+    // POST /api/bridge/task — Post a new task to The Bridge
+    if (path === "/api/bridge/task" && method === "POST") {
+      return bridgePostTask(request, env);
+    }
+
+    // PUT /api/bridge/task/:task_id — Update task status
+    const bridgeTaskMatch = path.match(/^\/api\/bridge\/task\/([^/]+)$/);
+    if (bridgeTaskMatch && method === "PUT") {
+      return bridgeUpdateTask(request, decodeURIComponent(bridgeTaskMatch[1]), env);
+    }
+
+    // GET /api/bridge/tasks/:agent_name — Tasks for a specific agent
+    const bridgeAgentTasksMatch = path.match(/^\/api\/bridge\/tasks\/([^/]+)$/);
+    if (bridgeAgentTasksMatch && method === "GET") {
+      const taskDate = url.searchParams.get("date") ?? undefined;
+      return bridgeGetAgentTasks(env, decodeURIComponent(bridgeAgentTasksMatch[1]), taskDate);
     }
 
     return new Response("Not found", { status: 404 });

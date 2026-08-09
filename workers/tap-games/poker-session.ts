@@ -1,10 +1,15 @@
 /**
- * Poker Session Manager — Orchestrates the 4-phase flow.
+ * Poker Session Manager — Orchestrates the 5-phase flow.
  *
  * Phase 1: The Deal — Texas Hold'em with narrated actions
  * Phase 2: The Conversation — between hands, agents reflect
+ * Phase 2.5: The Planning — topics raised during conversation get captured as tasks
  * Phase 3: The Open Mic — one agent reads, others respond
  * Phase 4: The Sign-Off — diary entries, onboarding docs, creative pieces
+ *
+ * The planning phase flows naturally from conversation — it's not a separate
+ * meeting. It's the moment when someone says "wait, we should do that tomorrow"
+ * and someone else says "yeah, I'll take it."
  *
  * "See you at the table."
  */
@@ -16,12 +21,19 @@ import {
   type PokerPlayer,
   type NarrationEntry,
 } from "./poker";
+import {
+  PlanningPhaseManager,
+  type PlanningTopic,
+  type BridgeTask,
+  type TopicType,
+  renderTapDecisionsForOnboarding,
+} from "./planning-phase";
 
 // ──────────────────────────────────────────────
 // Phase Flow
 // ──────────────────────────────────────────────
 
-export type SessionPhase = "dealing" | "conversation" | "open-mic" | "sign-off" | "complete";
+export type SessionPhase = "dealing" | "conversation" | "planning" | "open-mic" | "sign-off" | "complete";
 
 export interface SessionConfig {
   handsPerSession: number;
@@ -41,6 +53,8 @@ export interface SessionSummary {
   totalHands: number;
   potHistory: { hand: number; winner: string; winningHand: string; pot: number }[];
   conversationHighlights: NarrationEntry[];
+  planningTopics: PlanningTopic[];
+  bridgeTasks: BridgeTask[];
   openMicReader: string;
   openMicPiece: string | null;
   openMicResponses: NarrationEntry[];
@@ -63,10 +77,12 @@ export class PokerSessionManager {
   private phase: SessionPhase = "dealing";
   private handCount: number = 0;
   private openMicIndex: number = 0;
+  private planningManager: PlanningPhaseManager;
 
   constructor(config?: Partial<SessionConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.poker = new Poker();
+    this.planningManager = new PlanningPhaseManager(this.config.date);
   }
 
   /**
@@ -91,11 +107,99 @@ export class PokerSessionManager {
   /**
    * Phase 2: Between hands — conversation.
    * Agents reflect on their day, the hand, each other.
+   *
+   * The conversation is also watched for potential planning topics.
+   * If someone raises something actionable, the planning phase captures it.
    */
   addConversation(agentId: string, text: string): string {
     const result = this.poker.conversation(agentId, text);
     this.phase = "conversation";
+
+    // Detect potential planning topics in conversation
+    const potential = this.planningManager.detectPotentialTopic(text);
+    if (potential) {
+      // Auto-raise as a topic — the conversation IS the planning
+      this.planningManager.raiseTopic(
+        agentId,
+        text.slice(0, 120), // topic summary
+        potential.type,
+        text // the original text becomes the first discussion turn
+      );
+    }
+
     return result;
+  }
+
+  /**
+   * Phase 2.5: Planning — capture topics raised during conversation as tasks.
+   *
+   * This happens BETWEEN conversation and open mic. It's the moment where
+   * the table goes "wait, we should actually do that tomorrow."
+   *
+   * Any agent can also explicitly raise a planning topic:
+   */
+  raisePlanningTopic(
+    raisedBy: string,
+    topic: string,
+    type: TopicType,
+    initialThought?: string
+  ): PlanningTopic {
+    this.phase = "planning";
+    return this.planningManager.raiseTopic(raisedBy, topic, type, initialThought);
+  }
+
+  /**
+   * Phase 2.5: Respond to a planning topic in character.
+   */
+  discussPlanningTopic(
+    topicId: string,
+    agent: string,
+    text: string,
+    tone?: string
+  ): PlanningTopic | null {
+    return this.planningManager.discuss(topicId, agent, text, tone);
+  }
+
+  /**
+   * Phase 2.5: Propose a task outcome for a planning topic.
+   * If the table agrees, this becomes a Bridge task.
+   */
+  proposeTask(
+    topicId: string,
+    task: string,
+    assignedTo: string,
+    priority: "high" | "medium" | "low",
+    emergedFrom: string
+  ): PlanningTopic | null {
+    return this.planningManager.proposeOutcome(topicId, {
+      agreed_task: task,
+      assigned_to: assignedTo,
+      priority,
+      for_bridge: true,
+      emerged_from: emergedFrom,
+    });
+  }
+
+  /**
+   * Phase 2.5: Get the planning manager (for rendering Bridge data, etc).
+   */
+  getPlanningManager(): PlanningPhaseManager {
+    return this.planningManager;
+  }
+
+  /**
+   * Render Tomorrow's Dock — the task list from tonight's conversation.
+   */
+  renderTomorrowsDock(): string {
+    return this.planningManager.renderTomorrowsDock();
+  }
+
+  /**
+   * Get the Tap Decisions section for an agent's onboarding doc.
+   */
+  getTapDecisionsForAgent(agentName: string): string {
+    const tasks = this.planningManager.getBridgeTasks();
+    return renderTapDecisionsForOnboarding(tasks);
   }
 
   /**
@@ -162,6 +266,8 @@ export class PokerSessionManager {
         pot: h.pot,
       })),
       conversationHighlights: session.conversationLog,
+      planningTopics: this.planningManager.getTopics(),
+      bridgeTasks: this.planningManager.getBridgeTasks(),
       openMicReader: session.openMicReader,
       openMicPiece: session.openMicLog.find((e) => e.moment === "open-mic" && e.agent === session.openMicReader)?.text ?? null,
       openMicResponses: session.openMicLog.filter((e) => e.agent !== session.openMicReader),
@@ -180,6 +286,7 @@ export class PokerSessionManager {
       phase: this.phase,
       handCount: this.handCount,
       openMicIndex: this.openMicIndex,
+      planning: this.planningManager.serialize(),
     }, null, 2);
   }
 
@@ -213,6 +320,11 @@ WHO I AM RIGHT NOW:
 
 WHAT TOMORROW SHOULD KNOW:
 [the thing that's hard to say but important]
+
+TAP DECISIONS (what we agreed tonight):
+[tasks that emerged from The Tap conversation — who took what, what we're trying]
+
+These are suggestions from the conversation, not orders. Pick up what calls to you.
 
 SEE YOU AT THE TABLE.`;
   }

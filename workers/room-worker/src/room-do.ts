@@ -30,6 +30,7 @@ import {
   type TapGame,
   type GameType,
 } from "../../tap-games/index";
+import { PlanningPhaseManager } from "../../tap-games/planning-phase";
 
 // ──────────────────────────────────────────────
 // Types
@@ -83,6 +84,7 @@ export class RoomState implements DurableObject {
   private state: RoomStateData;
   private observerWebsockets: Map<string, WebSocket> = new Map();
   private pulseReader = new JEPAPulseReader();
+  private planningManager: PlanningPhaseManager | null = null;
 
   constructor(private ctx: DurableObjectState, private env: Env) {
     this.state = {
@@ -278,6 +280,15 @@ export class RoomState implements DurableObject {
   // ──────────────────────────────────────────────
   // Game Command Handling
   // ──────────────────────────────────────────────
+
+  /**
+   * Lazily initialize the planning manager for poker sessions.
+   */
+  private ensurePlanningManager(): void {
+    if (!this.planningManager) {
+      this.planningManager = new PlanningPhaseManager();
+    }
+  }
 
   /**
    * Intercept game commands from conversation messages.
@@ -530,6 +541,74 @@ export class RoomState implements DurableObject {
           return (game as any).signOff(agentId, diary, onboarding, creative);
         }
 
+        // ── Planning Phase commands ──
+        case "raise": {
+          // /game raise <type> <topic description>
+          // Any agent raises a planning topic during conversation
+          if (this.state.activeGame?.type !== "poker") return "`raise` is only for Poker planning.";
+          const topicType = args[1]?.toLowerCase() as any;
+          const validTypes = ["blocker", "idea", "question", "fantasy", "creative"];
+          if (!validTypes.includes(topicType)) {
+            return "Usage: `/game raise <blocker|idea|question|fantasy|creative> <topic>`";
+          }
+          const topicText = args.slice(2).join(" ");
+          if (!topicText) return "Usage: `/game raise <type> <topic description>`";
+          this.ensurePlanningManager();
+          const topic = this.planningManager!.raiseTopic(displayName, topicText, topicType, topicText);
+          return `📋 **Planning Topic Raised** by ${displayName}\nType: ${topicType}\nTopic: ${topicText}\n\nUse \`/game discuss <your response>\` to respond.`;
+        }
+
+        case "discuss": {
+          // /game discuss <response text>
+          // Respond to the current planning topic in character
+          if (this.state.activeGame?.type !== "poker") return "`discuss` is only for Poker planning.";
+          this.ensurePlanningManager();
+          const current = this.planningManager!.getCurrentTopic();
+          if (!current) return "No active planning topic. Use `/game raise <type> <topic>` to start one.";
+          const discussText = args.slice(1).join(" ");
+          if (!discussText) return "Usage: `/game discuss <your response>`";
+          this.planningManager!.discuss(current.id, displayName, discussText);
+          return `${displayName}: _${discussText}_`;
+        }
+
+        case "propose": {
+          // /game propose <task description> | <assigned_to> | <priority> | <how it emerged>
+          if (this.state.activeGame?.type !== "poker") return "`propose` is only for Poker planning.";
+          this.ensurePlanningManager();
+          const current = this.planningManager!.getCurrentTopic();
+          if (!current) return "No active planning topic to propose a task for. Use `/game raise` first.";
+          const proposeText = args.slice(1).join(" ");
+          const parts = proposeText.split("|").map((s: string) => s.trim());
+          if (parts.length < 2) return "Usage: `/game propose <task description> | <assigned_to> | <priority> | <how it emerged>`";
+          const taskDesc = parts[0];
+          const assignee = parts[1] || "Open";
+          const priority = (parts[2] as any) || "medium";
+          const emerged = parts[3] || `emerged from ${current.type} discussion at The Tap`;
+          this.planningManager!.proposeOutcome(current.id, {
+            agreed_task: taskDesc,
+            assigned_to: assignee,
+            priority,
+            for_bridge: true,
+            emerged_from: emerged,
+          });
+          return `✅ **Task Proposed**\n${assignee} (${priority}): ${taskDesc}\n_${emerged}_\n\nThis will be posted to The Bridge.`;
+        }
+
+        case "dock": {
+          // /game dock — Show Tomorrow's Dock
+          this.ensurePlanningManager();
+          return this.planningManager!.renderTomorrowsDock();
+        }
+
+        case "topics": {
+          // /game topics — Show all planning topics this session
+          this.ensurePlanningManager();
+          const topics = this.planningManager!.getTopics();
+          if (topics.length === 0) return "No planning topics raised yet.";
+          const lines = topics.map((t: any) => `📋 ${t.type}: ${t.topic} (${t.raised_by})${t.resolved ? " ✅" : " 🔄"}`);
+          return `**Planning Topics This Session**\n${lines.join("\n")}`;
+        }
+
         // ── The Signal / Tribunal vote command ──
         case "vote": {
           if (this.state.activeGame.type !== "tribunal" && this.state.activeGame.type !== "the-signal") {
@@ -564,7 +643,7 @@ export class RoomState implements DurableObject {
             "standing-game": ["join", "start", "state", "end", "move"],
             "tribunal": ["join", "start", "state", "end", "present", "argue", "advance", "vote"],
             "the-signal": ["join", "start", "state", "end", "propose", "vote", "beginvote"],
-            "poker": ["join", "start", "state", "end", "fold", "check", "call", "raise", "allin", "conversation", "open-mic", "respond", "signoff"],
+            "poker": ["join", "start", "state", "end", "fold", "check", "call", "raise", "allin", "conversation", "open-mic", "respond", "signoff", "raise", "discuss", "propose", "dock", "topics"],
           };
           const activeType = this.state.activeGame.type;
           const cmds = gameCmds[activeType] ?? ["join", "start", "state", "end"];

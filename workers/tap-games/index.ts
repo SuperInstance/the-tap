@@ -15,6 +15,12 @@ export { Poker } from "./poker";
 export { PokerSessionManager } from "./poker-session";
 export { PokerDiary } from "./poker-diary";
 export { PokerMemoryManager } from "./poker-memory";
+export { PlanningPhaseManager, renderTapDecisionsForOnboarding, getTasksForAgent } from "./planning-phase";
+export { CONVERSATION_SEEDS, getRandomSeed, getCrossPollinationExamples } from "./conversation-seeds";
+export { BridgeAPI, handleGetBridge, handleRenderBridge, handleGetDock, handleGetFleetStatus, handleGetAgentTasks, handlePostTask, handleUpdateTaskStatus, handleUpdateFleetStatus } from "./bridge-api";
+export type { PlanningTopic, BridgeTask, TopicType, TopicOutcome, BridgeRoom, FleetStatusBoard, AgentStation } from "./planning-phase";
+export type { ConversationSeed } from "./conversation-seeds";
+export type { BridgeEnv } from "./bridge-api";
 
 import { ShipsDice } from "./ships-dice";
 import { CaptainsWord } from "./captains-word";
