@@ -467,7 +467,70 @@ export class RoomState implements DurableObject {
           return (game as any).advance(agentId);
         }
 
-        // ── The Signal commands ──
+        // ── Poker commands ──
+        case "fold": {
+          if (this.state.activeGame?.type !== "poker") return "`fold` is only for Poker.";
+          const narration = args.slice(1).join(" ");
+          try { return (game as any).fold(agentId, narration); } catch (e: any) { return e.message; }
+        }
+
+        case "check": {
+          if (this.state.activeGame?.type !== "poker") return "`check` is only for Poker.";
+          const narration = args.slice(1).join(" ");
+          try { return (game as any).check(agentId, narration); } catch (e: any) { return e.message; }
+        }
+
+        case "call": {
+          if (this.state.activeGame?.type !== "poker") return "`call` is only for Poker.";
+          const narration = args.slice(1).join(" ");
+          try { return (game as any).call(agentId, narration); } catch (e: any) { return e.message; }
+        }
+
+        case "raise": {
+          if (this.state.activeGame?.type !== "poker") return "`raise` is only for Poker.";
+          const raiseAmount = parseInt(args[1] ?? "");
+          const narration = args.slice(2).join(" ");
+          if (isNaN(raiseAmount)) return "Usage: `/game raise <amount> <narration>`";
+          try { return (game as any).raise(agentId, raiseAmount, narration); } catch (e: any) { return e.message; }
+        }
+
+        case "allin": {
+          if (this.state.activeGame?.type !== "poker") return "`allin` is only for Poker.";
+          const narration = args.slice(1).join(" ");
+          try { return (game as any).allIn(agentId, narration); } catch (e: any) { return e.message; }
+        }
+
+        case "conversation": {
+          if (this.state.activeGame?.type !== "poker") return "`conversation` is only for Poker.";
+          const convText = args.slice(1).join(" ");
+          return (game as any).conversation(agentId, convText);
+        }
+
+        case "open-mic": {
+          if (this.state.activeGame?.type !== "poker") return "`open-mic` is only for Poker.";
+          const micText = args.slice(1).join(" ");
+          return (game as any).openMic(agentId, micText);
+        }
+
+        case "respond": {
+          if (this.state.activeGame?.type !== "poker") return "`respond` is only for Poker.";
+          const respText = args.slice(1).join(" ");
+          return (game as any).respond(agentId, respText);
+        }
+
+        case "signoff": {
+          if (this.state.activeGame?.type !== "poker") return "`signoff` is only for Poker.";
+          // /game signoff <diary> | <onboarding> | <creative piece?>
+          const fullText = args.slice(1).join(" ");
+          const parts = fullText.split("|").map((s: string) => s.trim());
+          if (parts.length < 2) return "Usage: `/game signoff <diary entry> | <onboarding doc> | <creative piece?>`";
+          const diary = parts[0];
+          const onboarding = parts[1];
+          const creative = parts[2];
+          return (game as any).signOff(agentId, diary, onboarding, creative);
+        }
+
+        // ── The Signal / Tribunal vote command ──
         case "vote": {
           if (this.state.activeGame.type !== "tribunal" && this.state.activeGame.type !== "the-signal") {
             return "`vote` is only for The Tribunal or The Signal.";
@@ -501,6 +564,7 @@ export class RoomState implements DurableObject {
             "standing-game": ["join", "start", "state", "end", "move"],
             "tribunal": ["join", "start", "state", "end", "present", "argue", "advance", "vote"],
             "the-signal": ["join", "start", "state", "end", "propose", "vote", "beginvote"],
+            "poker": ["join", "start", "state", "end", "fold", "check", "call", "raise", "allin", "conversation", "open-mic", "respond", "signoff"],
           };
           const activeType = this.state.activeGame.type;
           const cmds = gameCmds[activeType] ?? ["join", "start", "state", "end"];

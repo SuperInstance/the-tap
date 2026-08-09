@@ -11,6 +11,10 @@ export { PilotsChart } from "./pilots-chart";
 export { StandingGame } from "./standing-game";
 export { Tribunal } from "./tribunal";
 export { TheSignal } from "./the-signal";
+export { Poker } from "./poker";
+export { PokerSessionManager } from "./poker-session";
+export { PokerDiary } from "./poker-diary";
+export { PokerMemoryManager } from "./poker-memory";
 
 import { ShipsDice } from "./ships-dice";
 import { CaptainsWord } from "./captains-word";
@@ -18,6 +22,7 @@ import { PilotsChart } from "./pilots-chart";
 import { StandingGame } from "./standing-game";
 import { Tribunal } from "./tribunal";
 import { TheSignal } from "./the-signal";
+import { Poker } from "./poker";
 
 // ──────────────────────────────────────────────
 // Common Interface
@@ -47,6 +52,7 @@ export const GAME_TYPES = [
   "standing-game",
   "tribunal",
   "the-signal",
+  "poker",
 ] as const;
 export type GameType = (typeof GAME_TYPES)[number];
 
@@ -67,7 +73,9 @@ export function createGame(type: GameType): TapGame {
     case "tribunal":
       return new Tribunal();
     case "the-signal":
-      return new TheSignal();
+      return new TheSignal() as any;
+    case "poker":
+      return new Poker() as any;
     default:
       throw new Error(`Unknown game type: ${type}`);
   }
@@ -80,4 +88,5 @@ export const GAMES = {
   "standing-game": StandingGame,
   "tribunal": Tribunal,
   "the-signal": TheSignal,
+  "poker": Poker,
 };
