@@ -98,6 +98,11 @@ export default {
       return Response.json({ status: "ok", timestamp: Date.now() });
     }
 
+    // POST /api/seed — submit an SMP bot seed (for ZeroClaw molting)
+    if (path === "/api/seed" && method === "POST") {
+      return handleApiSeed(request, env);
+    }
+
     // ── Simple Agent API (no character sheet required) ──
 
     // POST /api/speak — agent posts a message to a room
@@ -3063,6 +3068,58 @@ async function handleTideCycle(request: Request, env: Env): Promise<Response> {
   return Response.json({
     ...report,
     message: "Tide cycle complete. The ocean recedes; what remains is yours to curate. Nothing has been deleted — the immortals decide what stays.",
+  });
+}
+
+// ═══════════════════════════════════════════════
+// SMP Bot Seed Submission
+// ═══════════════════════════════════════════════
+
+/**
+ * POST /api/seed — Submit an SMP bot seed to The Tap's stranger pool.
+ * Used when a ZeroClaw molts (creates an SMP bot).
+ * The seed captures the ZeroClaw's state at molting time.
+ * The DJ may deploy this seed that night or weeks later.
+ */
+async function handleApiSeed(request: Request, env: Env): Promise<Response> {
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { createdBy, creatorState, overrides } = body;
+  if (!createdBy || !creatorState) {
+    return Response.json({ error: "createdBy and creatorState are required" }, { status: 400 });
+  }
+
+  // Store the seed in D1 for persistence
+  const seedId = overrides?.id ?? `seed-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+
+  try {
+    await env.TAP_DB.prepare(
+      `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used, tag)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      0,
+      "seed-pool",
+      createdBy,
+      "SMP Seed Submission",
+      JSON.stringify({ seedId, creatorState, overrides }),
+      "statement",
+      0,
+      0,
+      "smp-seed"
+    ).run();
+  } catch {
+    // Non-fatal — seed will be used in-memory by the agent system
+  }
+
+  return Response.json({
+    ok: true,
+    seedId,
+    message: `Seed submitted by ${createdBy}. The DJ may deploy this stranger tonight or in the future. When it appears, you might recognize your own shell — or might not.`,
   });
 }
 

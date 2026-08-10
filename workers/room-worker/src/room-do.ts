@@ -280,8 +280,8 @@ export class RoomState implements DurableObject {
             for (const al of agentLines) {
               await this.executeAgentSystemLine(al);
             }
-            // If agent system handled it as a command (/npcs, /drifters, /pulse, /roommode), return early
-            if (agentLines.some(al => al.isSystem && (line.content.trim().toLowerCase().startsWith("/npcs") || line.content.trim().toLowerCase().startsWith("/drifters") || line.content.trim().toLowerCase().startsWith("/pulse") || line.content.trim().toLowerCase().startsWith("/roommode")))) {
+            // If agent system handled it as a command (/npcs, /drifters, /pulse, /roommode, /dj, /curveball), return early
+            if (agentLines.some(al => al.isSystem && (line.content.trim().toLowerCase().startsWith("/npcs") || line.content.trim().toLowerCase().startsWith("/drifters") || line.content.trim().toLowerCase().startsWith("/pulse") || line.content.trim().toLowerCase().startsWith("/roommode") || line.content.trim().toLowerCase().startsWith("/dj") || line.content.trim().toLowerCase().startsWith("/curveball")))) {
               return Response.json({ ok: true, agent_system: true });
             }
 
