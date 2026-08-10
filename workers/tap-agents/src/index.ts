@@ -71,4 +71,4 @@ export {
   type PuppeteerState,
 } from "./tap-puppeteer";
 
-export { AgentSystem } from "./agent-system";
+export { AgentSystem, type AgentSystemLine, type AgentSystemSnapshot } from "./agent-system";

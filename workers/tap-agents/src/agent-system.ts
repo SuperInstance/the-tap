@@ -89,10 +89,10 @@ export class AgentSystem {
 
   constructor() {
     this.npcManager = new NPCManager();
-    this.drifterManager = new DrifterManager();
-    this.pulse = new PerceptionPulse(this.npcManager);
-    this.improvement = new TapImprovement();
     this.puppeteer = new TapPuppeteer();
+    this.pulse = new PerceptionPulse(this.npcManager, this.puppeteer);
+    this.improvement = new TapImprovement();
+    this.drifterManager = new DrifterManager();
   }
 
   /**
@@ -104,7 +104,7 @@ export class AgentSystem {
 
     if (state["npc_state"]) {
       sys.npcManager = NPCManager.deserialize(state["npc_state"]);
-      sys.pulse = new PerceptionPulse(sys.npcManager);
+      sys.pulse = new PerceptionPulse(sys.npcManager, sys.puppeteer);
     }
     if (state["drifter_state"]) {
       sys.drifterManager = DrifterManager.deserialize(state["drifter_state"]);
