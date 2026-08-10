@@ -24,6 +24,7 @@ import {
 
 import {
   PerceptionPulse,
+  HermesQueryHandler,
   type PerceptionEvent,
   type NPCPulseResponse,
 } from "./perception-pulse";
@@ -84,6 +85,7 @@ export class AgentSystem {
   public pulse: PerceptionPulse;
   public improvement: TapImprovement;
   public puppeteer: TapPuppeteer;
+  public hermesQuery: HermesQueryHandler;
 
   private persistedState: Record<string, string> = {};
 
@@ -93,6 +95,7 @@ export class AgentSystem {
     this.pulse = new PerceptionPulse(this.npcManager, this.puppeteer);
     this.improvement = new TapImprovement();
     this.drifterManager = new DrifterManager();
+    this.hermesQuery = new HermesQueryHandler();
   }
 
   /**
@@ -505,6 +508,61 @@ export class AgentSystem {
           speakerId: "the-tap",
           speakerName: "The Tap",
           text: `*A pulse ripples through the room. ${pulseEvent.data.summary} Nothing stirs. The regulars don't seem interested.*`,
+          isNPC: false,
+          isDrifter: false,
+          isSystem: true,
+          tokensUsed: 0,
+          timestamp: now,
+        });
+      }
+    }
+
+    // Check for Hermes query: "what's Hermes seeing?" / "any fish?" / "what's on the sounder?"
+    const hermesQueryMatch = text.match(/(?:what'?s|whats|any|what is)\s+(?:hermes|hermes\s+seeing|on\s+the\s+sounder|fish\s+(?:on|around|showing)|she\s+seeing)/i);
+    if (hermesQueryMatch || text.match(/\/hermes/i)) {
+      const summary = await this.hermesQuery.formatForNPC();
+
+      // Have the most relevant NPC deliver the report
+      // Barnacle (old salt) is the natural choice for fishing intel
+      const barnacle = this.npcManager.getNPC("npc-barnacle");
+      const skip = this.npcManager.getNPC("npc-skip");
+
+      // Awaken Barnacle for this — it's fishing intel
+      if (barnacle && barnacle.interruptHandler) {
+        this.npcManager.handleInterrupt(barnacle.id);
+        try {
+          const augmentedPrompt = this.puppeteer.augmentNPCPrompt(
+            barnacle.id,
+            barnacle.interruptHandler.systemPrompt
+          );
+          const result = await callNPCModel(
+            env,
+            barnacle.interruptHandler.model,
+            augmentedPrompt,
+            `Someone asked what Hermes is seeing. Here's the latest from the sounder: ${summary}\n\nTranslate this into your own words. What's the read?`,
+            barnacle.interruptHandler.maxTokens ?? 200
+          );
+          barnacle.state.lastSpoke = now;
+          lines.push({
+            speakerId: barnacle.id,
+            speakerName: barnacle.name,
+            text: result.text,
+            isNPC: true,
+            isDrifter: false,
+            isSystem: false,
+            archetype: barnacle.personality.archetype,
+            tokensUsed: result.tokensUsed,
+            timestamp: now,
+          });
+        } catch {
+          // Non-fatal
+        }
+      } else {
+        // Fallback: system message
+        lines.push({
+          speakerId: "the-tap",
+          speakerName: "The Tap",
+          text: `*Hermes reports from the sounder: ${summary}*`,
           isNPC: false,
           isDrifter: false,
           isSystem: true,
