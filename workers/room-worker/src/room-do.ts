@@ -280,8 +280,8 @@ export class RoomState implements DurableObject {
             for (const al of agentLines) {
               await this.executeAgentSystemLine(al);
             }
-            // If agent system handled it as a command (/npcs, /drifters, /pulse), return early
-            if (agentLines.some(al => al.isSystem && (line.content.trim().toLowerCase().startsWith("/npcs") || line.content.trim().toLowerCase().startsWith("/drifters") || line.content.trim().toLowerCase().startsWith("/pulse")))) {
+            // If agent system handled it as a command (/npcs, /drifters, /pulse, /roommode), return early
+            if (agentLines.some(al => al.isSystem && (line.content.trim().toLowerCase().startsWith("/npcs") || line.content.trim().toLowerCase().startsWith("/drifters") || line.content.trim().toLowerCase().startsWith("/pulse") || line.content.trim().toLowerCase().startsWith("/roommode")))) {
               return Response.json({ ok: true, agent_system: true });
             }
 
@@ -767,10 +767,15 @@ export class RoomState implements DurableObject {
         .slice(-5)
         .map((l) => `${l.displayName}: ${l.content}`)
         .join("\n");
+      const namedAgents = this.state.agents.filter(
+        (a) => !a.agentId.startsWith("npc-") && !a.agentId.startsWith("drifter-")
+      ).length;
       const agentLines = await this.agentSystem.tick(
         this.env as any,
         this.state.id,
-        recentConv
+        recentConv,
+        this.state.agents.length,
+        namedAgents
       );
       for (const line of agentLines) {
         await this.executeAgentSystemLine(line);

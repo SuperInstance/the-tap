@@ -6,9 +6,12 @@
  * - Social drifters (temporary visitors on cheap models)
  * - Perception pulse (event-driven NPC awakening)
  * - Improvement loop (The Tap learns what engages)
+ * - Room modes (the six directional moods of The Tap)
+ * - Tap Puppeteer (The Tap as director — shapes NPCs through room context)
  *
  * Architecture: Hermit Crab Protocol
  *   Agent (crab) → Harness (shell: Ollama/DeepInfra) → Shared Fiction (The Tap)
+ *   The Tap is the SuperHarness. The Puppeteer is its director's chair.
  */
 
 export {
@@ -51,5 +54,21 @@ export {
   type NPCAdjustment,
   type DrifterTemplateInsight,
 } from "./improvement-loop";
+
+export {
+  ROOM_MODES,
+  getRoomMode,
+  getModeNames,
+  type RoomMode,
+  type AmbientEvent,
+} from "./room-modes";
+
+export {
+  TapPuppeteer,
+  type PuppeteerContext,
+  type ModeShift,
+  type AmbientFire,
+  type PuppeteerState,
+} from "./tap-puppeteer";
 
 export { AgentSystem } from "./agent-system";
