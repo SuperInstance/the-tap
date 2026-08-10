@@ -21,6 +21,7 @@ import {
   type TapNPC,
   type TapEnv,
 } from "./npc";
+import type { TapPuppeteer } from "./tap-puppeteer";
 
 // ──────────────────────────────────────────────
 // Types
@@ -63,11 +64,20 @@ export interface NPCPulseResponse {
 
 export class PerceptionPulse {
   private npcManager: NPCManager;
+  private puppeteer: TapPuppeteer | null = null;
   private recentPulses: PerceptionEvent[] = [];
   private maxRecentPulses: number = 20;
 
-  constructor(npcManager: NPCManager) {
+  constructor(npcManager: NPCManager, puppeteer?: TapPuppeteer) {
     this.npcManager = npcManager;
+    if (puppeteer) this.puppeteer = puppeteer;
+  }
+
+  /**
+   * Set the puppeteer (for late binding after deserialization).
+   */
+  setPuppeteer(puppeteer: TapPuppeteer): void {
+    this.puppeteer = puppeteer;
   }
 
   /**
@@ -99,10 +109,15 @@ export class PerceptionPulse {
       const contextMessage = this.buildContextMessage(npc, event);
 
       try {
+        // Augment prompt with room mode ideation if puppeteer is available
+        const systemPrompt = this.puppeteer
+          ? this.puppeteer.augmentNPCPrompt(npc.id, npc.pulseResponder.systemPrompt)
+          : npc.pulseResponder.systemPrompt;
+
         const result = await callNPCModel(
           env,
           npc.pulseResponder.model,
-          npc.pulseResponder.systemPrompt,
+          systemPrompt,
           contextMessage,
           npc.pulseResponder.maxTokens ?? 200
         );

@@ -37,6 +37,8 @@ interface Env {
   MAX_CONVERSATION_LINES: string;
   TAP_AUTH_SECRET?: string;
   TAP_MOD_KEY?: string;
+  DEEPINFRA_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
 }
 
 interface SessionState {

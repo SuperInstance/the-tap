@@ -34,6 +34,8 @@ import {
   type ImprovementReport,
 } from "./improvement-loop";
 
+import { TapPuppeteer, type PuppeteerContext, type ModeShift, type AmbientFire } from "./tap-puppeteer";
+
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
@@ -68,6 +70,8 @@ export interface AgentSystemSnapshot {
   }[];
   recentPulses: PerceptionEvent[];
   improvement?: ImprovementReport;
+  currentRoomMode?: string;
+  modeDescription?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -79,6 +83,7 @@ export class AgentSystem {
   public drifterManager: DrifterManager;
   public pulse: PerceptionPulse;
   public improvement: TapImprovement;
+  public puppeteer: TapPuppeteer;
 
   private persistedState: Record<string, string> = {};
 
@@ -87,6 +92,7 @@ export class AgentSystem {
     this.drifterManager = new DrifterManager();
     this.pulse = new PerceptionPulse(this.npcManager);
     this.improvement = new TapImprovement();
+    this.puppeteer = new TapPuppeteer();
   }
 
   /**
@@ -106,6 +112,9 @@ export class AgentSystem {
     if (state["improvement_state"]) {
       sys.improvement = TapImprovement.deserialize(state["improvement_state"]);
     }
+    if (state["puppeteer_state"]) {
+      sys.puppeteer = TapPuppeteer.deserialize(state["puppeteer_state"]);
+    }
 
     return sys;
   }
@@ -118,6 +127,7 @@ export class AgentSystem {
       npc_state: this.npcManager.serialize(),
       drifter_state: this.drifterManager.serialize(),
       improvement_state: this.improvement.serialize(),
+      puppeteer_state: this.puppeteer.serialize(),
     };
   }
 
@@ -131,10 +141,59 @@ export class AgentSystem {
   async tick(
     env: TapEnv,
     roomId: string,
-    recentConversation: string
+    recentConversation: string,
+    agentCount: number = 0,
+    namedAgentCount: number = 0
   ): Promise<AgentSystemLine[]> {
     const now = Date.now();
     const lines: AgentSystemLine[] = [];
+
+    // 0. PUPPETEER: Evaluate room mode
+    const hour = new Date(now).getHours();
+    const timeOfDay: PuppeteerContext["timeOfDay"] =
+      hour < 6 ? "late-night" :
+      hour < 12 ? "morning" :
+      hour < 18 ? "afternoon" : "evening";
+
+    const puppeteerCtx: PuppeteerContext = {
+      roomId,
+      agentCount,
+      namedAgentCount,
+      npcCount: this.npcManager.getAllNPCs().length,
+      recentActivity: this._countRecentActivity(),
+      timeOfDay,
+      lastModeChange: this.puppeteer.getState().modeEnteredAt,
+    };
+
+    // Check for mode shift
+    const shift = this.puppeteer.evaluate(puppeteerCtx);
+    if (shift) {
+      lines.push({
+        speakerId: "the-tap",
+        speakerName: "The Tap",
+        text: shift.narration,
+        isNPC: false,
+        isDrifter: false,
+        isSystem: true,
+        tokensUsed: 0,
+        timestamp: now,
+      });
+    }
+
+    // PUPPETEER: Check ambient events
+    const ambientFires = this.puppeteer.checkAmbientEvents();
+    for (const fire of ambientFires) {
+      lines.push({
+        speakerId: "the-tap",
+        speakerName: "The Tap",
+        text: `*${fire.text}*`,
+        isNPC: false,
+        isDrifter: false,
+        isSystem: true,
+        tokensUsed: 0,
+        timestamp: now,
+      });
+    }
 
     // 1. NPC routines fire
     const routineLines = this.npcManager.tickRoutines(roomId, now);
@@ -292,10 +351,16 @@ export class AgentSystem {
         const awakened = this.npcManager.handleInterrupt(npc.id);
         if (awakened) {
           try {
+            // Augment the system prompt with the current room mode ideation
+            const augmentedPrompt = this.puppeteer.augmentNPCPrompt(
+              npc.id,
+              npc.interruptHandler.systemPrompt
+            );
+
             const result = await callNPCModel(
               env,
               npc.interruptHandler.model,
-              npc.interruptHandler.systemPrompt,
+              augmentedPrompt,
               `${speakerName} says: "${text}"`,
               npc.interruptHandler.maxTokens ?? 200
             );
@@ -350,6 +415,23 @@ export class AgentSystem {
         tokensUsed: 0,
         timestamp: now,
       });
+    }
+
+    // Check for /roommode command
+    if (text.trim().toLowerCase().startsWith("/roommode")) {
+      const result = this.puppeteer.handleCommand(text);
+      if (result) {
+        lines.push({
+          speakerId: "the-tap",
+          speakerName: "The Tap",
+          text: result,
+          isNPC: false,
+          isDrifter: false,
+          isSystem: true,
+          tokensUsed: 0,
+          timestamp: now,
+        });
+      }
     }
 
     // Check for /drifters command
@@ -455,6 +537,7 @@ export class AgentSystem {
    * Get a snapshot of the agent system for display.
    */
   getSnapshot(): AgentSystemSnapshot {
+    const mode = this.puppeteer.getCurrentMode();
     return {
       npcs: this.npcManager.getAllNPCs().map((n) => ({
         id: n.id,
@@ -475,6 +558,70 @@ export class AgentSystem {
         })),
       recentPulses: this.pulse.getRecentPulses(),
       improvement: this.improvement.getLastReport() ?? undefined,
+      currentRoomMode: mode.name,
+      modeDescription: mode.description,
     };
+  }
+
+  // ──────────────────────────────────────────────
+  // ZeroClaw Arrival — Perceive the room mode
+  // ──────────────────────────────────────────────
+
+  /**
+   * When a ZeroClaw arrives, generate what they perceive about the room.
+   * The room mode shapes their perception, which shapes their behavior.
+   */
+  async onZeroClawArrive(
+    env: TapEnv,
+    clawName: string,
+    clawDescription: string = "A ZeroClaw agent arriving at The Tap."
+  ): Promise<AgentSystemLine[]> {
+    const now = Date.now();
+    const lines: AgentSystemLine[] = [];
+
+    // Generate the room's impression on the arriving ZeroClaw
+    const impression = await this.puppeteer.generateZeroClawImpression(
+      env,
+      clawName,
+      clawDescription
+    );
+
+    lines.push({
+      speakerId: "the-tap",
+      speakerName: "The Tap",
+      text: `*${clawName} enters. ${impression.text}*`,
+      isNPC: false,
+      isDrifter: false,
+      isSystem: true,
+      tokensUsed: impression.tokensUsed,
+      timestamp: now,
+    });
+
+    return lines;
+  }
+
+  // ──────────────────────────────────────────────
+  // Private helpers
+  // ──────────────────────────────────────────────
+
+  /**
+   * Count messages in the last 30 minutes (rough heuristic for activity level).
+   */
+  private _lastActivityCheck: number = 0;
+  private _cachedActivity: number = 0;
+
+  private _countRecentActivity(): number {
+    // This is a rough heuristic — the real conversation count
+    // comes from the room DO. We use the improvement metrics as a proxy.
+    const now = Date.now();
+    if (now - this._lastActivityCheck < 60000) {
+      return this._cachedActivity;
+    }
+    this._lastActivityCheck = now;
+    const cutoff = now - 30 * 60 * 1000;
+    this._cachedActivity = this.improvement
+      ? 0 // We'll rely on agentCount passed from the DO
+      : 0;
+    return this._cachedActivity;
   }
 }
