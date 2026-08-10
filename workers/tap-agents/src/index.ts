@@ -40,11 +40,13 @@ export {
 
 export {
   PerceptionPulse,
+  HermesQueryHandler,
   createCatchEvent,
   createWeatherEvent,
   createFishDetectionEvent,
   type PerceptionEvent,
   type NPCPulseResponse,
+  type HermesQueryResult,
 } from "./perception-pulse";
 
 export {

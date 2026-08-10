@@ -267,3 +267,213 @@ export function createFishDetectionEvent(
     timestamp: Date.now(),
   };
 }
+
+// ──────────────────────────────────────────────
+// Hermes Query Handler — Reverse path (The Tap → Hermes)
+// ──────────────────────────────────────────────
+
+/**
+ * Handles queries from The Tap's NPCs asking about Hermes's observations.
+ *
+ * When someone at The Tap says "What's Hermes seeing?" or "Any fish?",
+ * this handler queries the Hermes Cloudflare Frames API and returns
+ * the latest observation data.
+ *
+ * This is the reverse half of the bridge — The Tap reaching back to Hermes.
+ */
+export class HermesQueryHandler {
+  private framesApiEndpoint: string;
+  private authKey: string;
+  private cache: { data: HermesQueryResult | null; expires: number } = {
+    data: null,
+    expires: 0,
+  };
+  private cacheTtlMs: number = 10_000; // 10 second cache
+
+  constructor(options?: {
+    framesApiEndpoint?: string;
+    authKey?: string;
+    cacheTtlMs?: number;
+  }) {
+    this.framesApiEndpoint =
+      options?.framesApiEndpoint ??
+      "https://hermes-frames.casey-digennaro.workers.dev";
+    this.authKey = options?.authKey ?? "agent-key";
+    if (options?.cacheTtlMs) this.cacheTtlMs = options.cacheTtlMs;
+  }
+
+  /**
+   * Query the latest Hermes observation.
+   * Results are cached briefly to avoid hammering the API.
+   */
+  async queryLatest(): Promise<HermesQueryResult> {
+    // Check cache
+    if (this.cache.data && Date.now() < this.cache.expires) {
+      return this.cache.data;
+    }
+
+    try {
+      const response = await fetch(
+        `${this.framesApiEndpoint}/frames?limit=1`,
+        {
+          headers: { Authorization: `Bearer ${this.authKey}` },
+        }
+      );
+
+      if (!response.ok) {
+        return {
+          summary: "Hermes's systems are offline.",
+          depth: 0,
+          insideOperatingRange: false,
+          observations: [],
+          catches: [],
+          timestamp: new Date().toISOString(),
+          frameId: "none",
+        };
+      }
+
+      const data = (await response.json()) as { data: FrameRecord[] };
+      if (!data.data || data.data.length === 0) {
+        const result: HermesQueryResult = {
+          summary: "Hermes hasn't reported anything yet.",
+          depth: 0,
+          insideOperatingRange: false,
+          observations: [],
+          catches: [],
+          timestamp: new Date().toISOString(),
+          frameId: "none",
+        };
+        this.cache = { data: result, expires: Date.now() + this.cacheTtlMs };
+        return result;
+      }
+
+      const record = data.data[0];
+      const observations =
+        typeof record.observations === "string"
+          ? JSON.parse(record.observations)
+          : record.observations ?? [];
+      const catchEvents =
+        typeof record.catch_events === "string"
+          ? JSON.parse(record.catch_events)
+          : record.catch_events ?? [];
+
+      const result: HermesQueryResult = {
+        summary: observations.length > 0 ? observations[0].description : "Quiet on the sounder.",
+        depth: record.depth ?? 0,
+        insideOperatingRange: record.inside_gear_range === 1,
+        observations: observations.slice(0, 5).map((o: Observation) => ({
+          type: o.type,
+          description: o.description,
+          depth: o.depth,
+          confidence: o.confidence,
+        })),
+        catches: catchEvents.map((c: CatchEvent) => ({
+          species: c.species,
+          time: c.time,
+        })),
+        timestamp: record.timestamp,
+        frameId: record.id,
+      };
+
+      this.cache = { data: result, expires: Date.now() + this.cacheTtlMs };
+      return result;
+    } catch {
+      return {
+        summary: "Can't reach Hermes right now.",
+        depth: 0,
+        insideOperatingRange: false,
+        observations: [],
+        catches: [],
+        timestamp: new Date().toISOString(),
+        frameId: "error",
+      };
+    }
+  }
+
+  /**
+   * Format the latest observation for an NPC to read.
+   *
+   * This produces a brief, natural-language summary that NPCs
+   * can react to in character.
+   */
+  async formatForNPC(): Promise<string> {
+    const data = await this.queryLatest();
+
+    if (data.frameId === "none" || data.frameId === "error") {
+      return data.summary;
+    }
+
+    const parts: string[] = [];
+    parts.push(`${data.depth.toFixed(0)} fathoms, ${data.insideOperatingRange ? "deep side" : "shallow side"} of the line`);
+
+    if (data.observations.length > 0) {
+      const obsParts = data.observations.slice(0, 3).map((o) => {
+        switch (o.type) {
+          case "fish_mark": return `marks at ${o.depth.toFixed(0)} fm`;
+          case "feed_ball": return `feed ball at ${o.depth.toFixed(0)} fm`;
+          case "plankton_layer": return `plankton at ${o.depth.toFixed(0)} fm`;
+          case "thermocline": return `thermocline at ${o.depth.toFixed(0)} fm`;
+          case "interference": return "interference on the sounder";
+          default: return o.description;
+        }
+      });
+      parts.push(`Seeing: ${obsParts.join(", ")}`);
+    } else {
+      parts.push("Not much on the sounder");
+    }
+
+    if (data.catches.length > 0) {
+      parts.push(`Recent catch: ${data.catches[0].species}`);
+    }
+
+    return parts.join(". ") + ".";
+  }
+}
+
+// ──────────────────────────────────────────────
+// Types for the reverse query path
+// // ────────────────────────────────────────────
+
+export interface HermesQueryResult {
+  summary: string;
+  depth: number;
+  insideOperatingRange: boolean;
+  observations: Array<{
+    type: string;
+    description: string;
+    depth: number;
+    confidence: number;
+  }>;
+  catches: Array<{ species: string; time: string }>;
+  timestamp: string;
+  frameId: string;
+}
+
+interface FrameRecord {
+  id: string;
+  timestamp: string;
+  lat: number;
+  lon: number;
+  depth: number | null;
+  inside_gear_range: number;
+  observations: string | Observation[];
+  catch_events: string | CatchEvent[];
+}
+
+interface Observation {
+  type: string;
+  depth: number;
+  intensity: number;
+  confidence: number;
+  description: string;
+  frequency: string;
+}
+
+interface CatchEvent {
+  species: string;
+  time: string;
+  location: { lat: number; lon: number };
+  gearNumber: number;
+  confidence: number;
+  detectionMethod: string;
+}
