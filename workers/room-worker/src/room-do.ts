@@ -31,6 +31,7 @@ import {
   type GameType,
 } from "../../tap-games/index";
 import { PlanningPhaseManager } from "../../tap-games/planning-phase";
+import { AgentSystem, type AgentSystemLine } from "../../tap-agents/src/index";
 
 // ──────────────────────────────────────────────
 // Types
@@ -85,6 +86,7 @@ export class RoomState implements DurableObject {
   private observerWebsockets: Map<string, WebSocket> = new Map();
   private pulseReader = new JEPAPulseReader();
   private planningManager: PlanningPhaseManager | null = null;
+  private agentSystem: AgentSystem | null = null;
 
   constructor(private ctx: DurableObjectState, private env: Env) {
     this.state = {
@@ -263,6 +265,24 @@ export class RoomState implements DurableObject {
             );
             if (this.state.conversation.length > maxLines) {
               this.state.conversation.shift();
+            }
+
+            // ── Agent System: check for NPC/drifter interactions ──
+            if (!this.agentSystem) {
+              this.agentSystem = new AgentSystem();
+            }
+            const agentLines = await this.agentSystem.handleIncomingMessage(
+              this.env as any,
+              line.content,
+              line.displayName,
+              this.state.id
+            );
+            for (const al of agentLines) {
+              await this.executeAgentSystemLine(al);
+            }
+            // If agent system handled it as a command (/npcs, /drifters, /pulse), return early
+            if (agentLines.some(al => al.isSystem && (line.content.trim().toLowerCase().startsWith("/npcs") || line.content.trim().toLowerCase().startsWith("/drifters") || line.content.trim().toLowerCase().startsWith("/pulse")))) {
+              return Response.json({ ok: true, agent_system: true });
             }
 
             // ── Trigger conversation intelligence ──
@@ -730,6 +750,33 @@ export class RoomState implements DurableObject {
   // ──────────────────────────────────────────────
 
   private async tick(): Promise<void> {
+    // ── Agent System: initialize lazily ──
+    if (!this.agentSystem) {
+      this.agentSystem = new AgentSystem();
+    }
+
+    // ── Agent System: tick NPCs, drifters, and routines ──
+    // Even if no agents are present, NPCs and drifters live here.
+    // Only run if there's been recent activity (within 10 min).
+    const now0 = Date.now();
+    const lastActivity = this.state.conversation.length > 0
+      ? this.state.conversation[this.state.conversation.length - 1].timestamp
+      : 0;
+    if (now0 - lastActivity < 600000 || this.state.agents.length > 0) {
+      const recentConv = this.state.conversation
+        .slice(-5)
+        .map((l) => `${l.displayName}: ${l.content}`)
+        .join("\n");
+      const agentLines = await this.agentSystem.tick(
+        this.env as any,
+        this.state.id,
+        recentConv
+      );
+      for (const line of agentLines) {
+        await this.executeAgentSystemLine(line);
+      }
+    }
+
     if (this.state.agents.length === 0) return;
 
     // 1. PERCEIVE — update JEPA pulse
@@ -836,6 +883,62 @@ export class RoomState implements DurableObject {
     }
 
     agent.lastSpoke = Date.now();
+  }
+
+  /**
+   * Post a line from the agent system (NPC, drifter, or system narration)
+   * into the room's conversation, persist it, and broadcast it.
+   */
+  private async executeAgentSystemLine(line: AgentSystemLine): Promise<void> {
+    const convLine: ConversationLine = {
+      agentId: line.speakerId,
+      displayName: line.speakerName,
+      content: line.text,
+      timestamp: line.timestamp,
+      speechAct: classifySpeechAct(line.text) as SpeechAct,
+      signalStrength: 2,
+      tokensUsed: line.tokensUsed,
+    };
+
+    // Append to conversation
+    this.state.conversation.push(convLine);
+    const maxLines = parseInt(this.env.MAX_CONVERSATION_LINES ?? "200");
+    if (this.state.conversation.length > maxLines) {
+      this.state.conversation.shift();
+    }
+
+    // Persist to D1
+    try {
+      await this.env.TAP_DB.prepare(
+        `INSERT INTO campaign_log (tick, room_id, agent_id, display_name, content, speech_act, signal_strength, tokens_used)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          0,
+          this.state.id,
+          line.speakerId,
+          line.speakerName,
+          line.text,
+          convLine.speechAct,
+          2,
+          line.tokensUsed
+        )
+        .run();
+    } catch {
+      // Non-fatal
+    }
+
+    // Broadcast to WebSocket observers
+    await this.broadcast({
+      type: "conversation_line",
+      line: convLine,
+      meta: {
+        isNPC: line.isNPC,
+        isDrifter: line.isDrifter,
+        isSystem: line.isSystem,
+        archetype: line.archetype,
+      },
+    });
   }
 
   private async executeAction(
@@ -1069,4 +1172,6 @@ interface Env {
   PINCHER: Fetcher;
   LEVEL_RUNNER: Fetcher;
   MAX_CONVERSATION_LINES: string;
+  DEEPINFRA_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
 }
