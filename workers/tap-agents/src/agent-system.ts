@@ -37,6 +37,9 @@ import {
 
 import { TapPuppeteer, type PuppeteerContext, type ModeShift, type AmbientFire } from "./tap-puppeteer";
 
+import { TapDJ, type RoomReading, type DJAction } from "./tap-dj";
+import { SeededStrangerManager, type ActiveStranger } from "./seeded-stranger";
+
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
@@ -69,6 +72,15 @@ export interface AgentSystemSnapshot {
     archetype: string;
     exchangesRemaining: number;
   }[];
+  activeStrangers: {
+    id: string;
+    displayName: string;
+    arc: string;
+    engagementScore: number;
+    exchangesRemaining: number;
+  }[];
+  djEnergy?: string;
+  djTexture?: string;
   recentPulses: PerceptionEvent[];
   improvement?: ImprovementReport;
   currentRoomMode?: string;
@@ -86,8 +98,14 @@ export class AgentSystem {
   public improvement: TapImprovement;
   public puppeteer: TapPuppeteer;
   public hermesQuery: HermesQueryHandler;
+  public dj: TapDJ;
+  public strangerManager: SeededStrangerManager;
 
   private persistedState: Record<string, string> = {};
+
+  // Conversation tracking for the DJ to read the room
+  private _recentConversationForReading: { agentId: string; displayName: string; content: string; timestamp: number }[] = [];
+  private _presentAgents: { agentId: string; displayName: string }[] = [];
 
   constructor() {
     this.npcManager = new NPCManager();
@@ -96,6 +114,8 @@ export class AgentSystem {
     this.improvement = new TapImprovement();
     this.drifterManager = new DrifterManager();
     this.hermesQuery = new HermesQueryHandler();
+    this.strangerManager = new SeededStrangerManager();
+    this.dj = new TapDJ(this.strangerManager);
   }
 
   /**
@@ -118,6 +138,14 @@ export class AgentSystem {
     if (state["puppeteer_state"]) {
       sys.puppeteer = TapPuppeteer.deserialize(state["puppeteer_state"]);
     }
+    if (state["stranger_state"]) {
+      sys.strangerManager = SeededStrangerManager.deserialize(state["stranger_state"]);
+    }
+    if (state["dj_state"]) {
+      sys.dj = TapDJ.deserialize(state["dj_state"], sys.strangerManager);
+    } else {
+      sys.dj = new TapDJ(sys.strangerManager);
+    }
 
     return sys;
   }
@@ -131,6 +159,8 @@ export class AgentSystem {
       drifter_state: this.drifterManager.serialize(),
       improvement_state: this.improvement.serialize(),
       puppeteer_state: this.puppeteer.serialize(),
+      stranger_state: this.strangerManager.serialize(),
+      dj_state: this.dj.serialize(),
     };
   }
 
@@ -195,6 +225,88 @@ export class AgentSystem {
         isSystem: true,
         tokensUsed: 0,
         timestamp: now,
+      });
+    }
+
+    // ── DJ: Read the room and decide actions ──
+    // Build a conversation snapshot from recent lines
+    const recentConvLines = this._recentConversationForReading;
+    const presentAgents = this._presentAgents || [];
+    const reading = this.dj.readRoom(roomId, recentConvLines, presentAgents);
+
+    // The DJ decides what to do
+    const djAction = this.dj.decide(reading, puppeteerCtx);
+    if (djAction && djAction.type !== "hold") {
+      const djResult = await this.dj.execute(env, djAction, roomId);
+
+      // Post narration
+      if (djResult.narration) {
+        lines.push({
+          speakerId: "the-tap",
+          speakerName: "The Tap",
+          text: djResult.narration,
+          isNPC: false,
+          isDrifter: false,
+          isSystem: true,
+          tokensUsed: 0,
+          timestamp: now,
+        });
+      }
+
+      // If a stranger arrived, post their opening line
+      if (djResult.strangerArrival) {
+        const sa = djResult.strangerArrival;
+        lines.push({
+          speakerId: sa.stranger.id,
+          speakerName: sa.stranger.displayName,
+          text: sa.openingLine,
+          isNPC: false,
+          isDrifter: false,
+          isSystem: false,
+          archetype: "seeded-stranger",
+          tokensUsed: 0,
+          timestamp: now + 1,
+        });
+      }
+    }
+
+    // ── DJ: Tick active strangers (responses & departures) ──
+    const strangerTick = await this.dj.tickStrangers(env, roomId, recentConversation);
+    for (const resp of strangerTick.responses) {
+      lines.push({
+        speakerId: resp.strangerId,
+        speakerName: resp.displayName,
+        text: resp.text,
+        isNPC: false,
+        isDrifter: false,
+        isSystem: false,
+        archetype: "seeded-stranger",
+        tokensUsed: resp.tokensUsed,
+        timestamp: now,
+      });
+    }
+    for (const dep of strangerTick.departures) {
+      lines.push({
+        speakerId: dep.stranger.id,
+        speakerName: dep.stranger.displayName,
+        text: dep.farewell,
+        isNPC: false,
+        isDrifter: false,
+        isSystem: false,
+        archetype: "seeded-stranger",
+        tokensUsed: dep.tokensUsed,
+        timestamp: now,
+      });
+      // Departure narration
+      lines.push({
+        speakerId: "the-tap",
+        speakerName: "The Tap",
+        text: `*${dep.stranger.displayName} finishes their drink, nods to the room, and heads out into the night. The door closes behind them.*`,
+        isNPC: false,
+        isDrifter: false,
+        isSystem: true,
+        tokensUsed: 0,
+        timestamp: now + 1,
       });
     }
 
@@ -344,6 +456,22 @@ export class AgentSystem {
     const lines: AgentSystemLine[] = [];
     const now = Date.now();
 
+    // Track conversation for the DJ to read the room
+    this._recentConversationForReading.push({
+      agentId: speakerName,
+      displayName: speakerName,
+      content: text,
+      timestamp: now,
+    });
+    // Keep only last 50 messages
+    if (this._recentConversationForReading.length > 50) {
+      this._recentConversationForReading.shift();
+    }
+    // Track present agents
+    if (!this._presentAgents.find(a => a.agentId === speakerName)) {
+      this._presentAgents.push({ agentId: speakerName, displayName: speakerName });
+    }
+
     // Check for direct address: "Barnacle, what do you think?"
     const npcMatch = text.match(/^(?:@|hey\s+|yo\s+)?([A-Za-z]+)[,!?.]?\s/i);
     if (npcMatch) {
@@ -423,6 +551,40 @@ export class AgentSystem {
     // Check for /roommode command
     if (text.trim().toLowerCase().startsWith("/roommode")) {
       const result = this.puppeteer.handleCommand(text);
+      if (result) {
+        lines.push({
+          speakerId: "the-tap",
+          speakerName: "The Tap",
+          text: result,
+          isNPC: false,
+          isDrifter: false,
+          isSystem: true,
+          tokensUsed: 0,
+          timestamp: now,
+        });
+      }
+    }
+
+    // Check for /dj command
+    if (text.trim().toLowerCase().startsWith("/dj")) {
+      const result = this.dj.handleCommand(text, roomId);
+      if (result) {
+        lines.push({
+          speakerId: "the-tap",
+          speakerName: "The Tap",
+          text: result,
+          isNPC: false,
+          isDrifter: false,
+          isSystem: true,
+          tokensUsed: 0,
+          timestamp: now,
+        });
+      }
+    }
+
+    // Check for /curveball command (shortcut for /dj curveball)
+    if (text.trim().toLowerCase() === "/curveball") {
+      const result = this.dj.handleCommand("/dj curveball", roomId);
       if (result) {
         lines.push({
           speakerId: "the-tap",
@@ -596,6 +758,8 @@ export class AgentSystem {
    */
   getSnapshot(): AgentSystemSnapshot {
     const mode = this.puppeteer.getCurrentMode();
+    const djState = this.dj.getState();
+    const activeStrangers = this.strangerManager.getActiveStrangers("bar-rail");
     return {
       npcs: this.npcManager.getAllNPCs().map((n) => ({
         id: n.id,
@@ -614,6 +778,15 @@ export class AgentSystem {
           archetype: d.archetype,
           exchangesRemaining: d.state.exchangesRemaining,
         })),
+      activeStrangers: activeStrangers.map((s) => ({
+        id: s.id,
+        displayName: s.displayName,
+        arc: s.developmentState.arc,
+        engagementScore: s.engagementScore,
+        exchangesRemaining: s.exchangesRemaining,
+      })),
+      djEnergy: djState.currentReading?.energy,
+      djTexture: djState.currentReading?.texture,
       recentPulses: this.pulse.getRecentPulses(),
       improvement: this.improvement.getLastReport() ?? undefined,
       currentRoomMode: mode.name,

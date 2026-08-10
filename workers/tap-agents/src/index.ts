@@ -74,3 +74,26 @@ export {
 } from "./tap-puppeteer";
 
 export { AgentSystem, type AgentSystemLine, type AgentSystemSnapshot } from "./agent-system";
+
+export {
+  TapDJ,
+  type EnergyLevel,
+  type SocialTexture,
+  type RoomReading,
+  type DJAction,
+  type DJState,
+} from "./tap-dj";
+
+export {
+  SeededStrangerManager,
+  createSeed,
+  penroseToPersonality,
+  hashToPenrose,
+  generateSeedBatch,
+  type SMPBotSeed,
+  type PenrosePosition,
+  type PersonalityVector,
+  type CreatorStateSnapshot,
+  type ActiveStranger,
+  type StrangerDevelopment,
+} from "./seeded-stranger";
