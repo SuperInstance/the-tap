@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
+    "test": "node --test tests/*.test.mjs",
+    "test:python": "pytest",
     "deploy": "wrangler deploy",
     "db:migrate": "wrangler d1 execute tap-db --file=migrations/0001_init.sql",
     "db:seed": "wrangler d1 execute tap-db --file=migrations/0002_seed_rooms.sql",
