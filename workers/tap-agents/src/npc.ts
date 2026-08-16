@@ -142,7 +142,7 @@ export const DEFAULT_NPCS: Omit<TapNPC, "state">[] = [
     id: "npc-skip",
     name: "Skip",
     harness: "ollama",
-    model: "phi3",
+    model: "qwen2.5:3b",
     personality: {
       archetype: "greenhorn",
       speechStyle: "eager, uses too many words, asks obvious questions",
