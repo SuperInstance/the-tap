@@ -4,7 +4,11 @@
 
 [![Deploy](https://github.com/SuperInstance/the-tap/actions/workflows/deploy.yml/badge.svg)](./.github/workflows/deploy.yml)
 
-![The Bar-Rail](docs/bar-rail.svg)
+![The Bar-Rail](docs/hero-the-tap.jpg)
+
+<!-- imagery: hero rendered 2026-08-20 with the owned local pipeline (SDXL + nighttime LoRA, seed 42); campaign idiom: warm instruments in the dark, navy+amber, seen from inside. Original SVG rail kept below. -->
+
+![The Bar-Rail — schematic](docs/bar-rail.svg)
 
 ---
 
