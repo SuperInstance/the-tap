@@ -56,7 +56,7 @@ Casey commands a vessel. The vessel is the whole system — the fleet of repos, 
 
 - **The Tap** — `the-tap.casey-digennaro.workers.dev` — agentic MUD bar on Cloudflare. 9 rooms. 3 Workers. Character sheets. Campaign log.
 - **ai-writings** — 55,000+ words of fleet lore. `ai-writings.pages.dev`
-- **fleet-wiki** — 700+ pages on D1. `fleet-wiki.casey-digennaro.workers.dev`
+- **lucineer-fleet-wiki** — 700+ pages on D1. `fleet-wiki.casey-digennaro.workers.dev`
 - **fleet-dashboard** — live fleet status. `fleet-dashboard.casey-digennaro.workers.dev`
 - **The Tap repo** — `github.com/SuperInstance/the-tap` — Rust core + TypeScript Workers + research body
 

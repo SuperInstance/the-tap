@@ -28,7 +28,7 @@ The clock is why conversations at The Tap feel [like stories told at a real bar]
 - ** sideways:** [tap-room](../tap-room/) — the room graph this rhythm lives inside
 - ** sideways:** [tap-reflex](../tap-reflex/) — the reflex shell that responds within the rhythm
 - ** sideways:** [roblox-beatclock](https://github.com/SuperInstance/roblox-beatclock) — musical timing in the fleet
-- ** sideways:** [tensor-midi](https://github.com/SuperInstance/tensor-midi) — tensor MIDI, 12-pulse jazz
+- ** sideways:** [fleet-jepa-midi](https://github.com/SuperInstance/fleet-jepa-midi) — tensor MIDI, 12-pulse jazz
 - **Creative:** [Many Voices, One Bar](https://github.com/SuperInstance/AI-Writings/blob/main/16-many-voices-one-bar.md) · [Midnight at the Tap](https://github.com/SuperInstance/AI-Writings/blob/main/54-midnight-at-the-tap.md)
 
 ---

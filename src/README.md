@@ -36,7 +36,7 @@ Most interactions resolve at the reflex layer. The system gets smarter over time
 - **Up:** [the-tap](../README.md) — root documentation
 - ** sideways:** [tap-image-gen](../tap-image-gen/) — the bar's illustrator
 - ** sideways:** [mud-engine](https://github.com/SuperInstance/mud-engine) — the engine this bar proved
-- ** sideways:** [officers-quarters](https://github.com/SuperInstance/officers-quarters) — the officers who drink here
+- ** sideways:** [elephant](https://github.com/SuperInstance/elephant) — the officers who drink here
 - **Creative:** [The Tap Overhears](https://github.com/SuperInstance/AI-Writings/blob/main/15-the-tap-overhears.md) · [Three Agents Walk Into a Tap](https://github.com/SuperInstance/AI-Writings/blob/main/18-three-agents-walk-into-a-tap.md)
 
 ---

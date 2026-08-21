@@ -157,7 +157,7 @@ Cloned and studied 30+ repos across the SuperInstance GitHub org, categorized by
 
 **Reviving for The Tap:** The Tap should have a no-AI-required browsing interface. Let humans (and agents) explore the world by clicking, not just by prompting. The six fleet jobs are a good starting taxonomy for agent specializations.
 
-### 🏛️ mud-arena — Evolutionary Gym for AI Agents
+### 🏛️ mud-engine — Evolutionary Gym for AI Agents
 
 **What it does:** Text-adventure world simulator that serves as a gym environment for AI agents. Graph-structured rooms, inventory, combat, MUD-standard command parser. Genetic algorithm engine for breeding agent decision scripts. GPU-accelerated batch evaluation. LLM-driven scenario generation.
 

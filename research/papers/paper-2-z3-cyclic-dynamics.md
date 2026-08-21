@@ -6,7 +6,7 @@
 
 ## Abstract
 
-We present Z₃ Cyclic Dynamics, a mathematically grounded framework for multi-agent conversation that replaces sequential turn-taking with simultaneous beat-based dialogue governed by the cyclic group $\mathbb{Z}_3$. We prove that $\mathbb{Z}_3$ is the unique group on three elements, derive the Pisano period $\pi(3) = 8$ from the Fibonacci matrix's order in $GL(2, \mathbb{F}_3)$, and demonstrate that anti-monoculture mechanisms are necessary to prevent conversational collapse. We compare $\mathbb{Z}_3$ to higher cyclic groups ($\mathbb{Z}_5$, $\mathbb{Z}_7$) and show that $\mathbb{Z}_3$ produces the highest entropy rate per beat. The framework is implemented in `ternary-tenforward` and has been validated through 200-round simulation experiments.
+We present Z₃ Cyclic Dynamics, a mathematically grounded framework for multi-agent conversation that replaces sequential turn-taking with simultaneous beat-based dialogue governed by the cyclic group $\mathbb{Z}_3$. We prove that $\mathbb{Z}_3$ is the unique group on three elements, derive the Pisano period $\pi(3) = 8$ from the Fibonacci matrix's order in $GL(2, \mathbb{F}_3)$, and demonstrate that anti-monoculture mechanisms are necessary to prevent conversational collapse. We compare $\mathbb{Z}_3$ to higher cyclic groups ($\mathbb{Z}_5$, $\mathbb{Z}_7$) and show that $\mathbb{Z}_3$ produces the highest entropy rate per beat. The framework is implemented in `confidence-cascade` and has been validated through 200-round simulation experiments.
 
 ---
 
@@ -14,7 +14,7 @@ We present Z₃ Cyclic Dynamics, a mathematically grounded framework for multi-a
 
 Most multi-agent conversation systems use sequential turn-taking: Agent A speaks, then Agent B, then Agent C. This is unnatural. Real conversations — at a bar, in a meeting, around a dinner table — involve people chiming in simultaneously, reacting in real time, with no moderator calling on speakers.
 
-The ternary-tenforward system implements a fundamentally different model: **beat-based cyclic dialogue** where all agents produce output simultaneously on each beat, then reconcile based on what they predicted vs. what actually happened. The mathematical foundation is the cyclic group $\mathbb{Z}_3$ on the speaker states $\{-1, 0, +1\}$ (contrarian, reflecting, agreeing).
+The confidence-cascade system implements a fundamentally different model: **beat-based cyclic dialogue** where all agents produce output simultaneously on each beat, then reconcile based on what they predicted vs. what actually happened. The mathematical foundation is the cyclic group $\mathbb{Z}_3$ on the speaker states $\{-1, 0, +1\}$ (contrarian, reflecting, agreeing).
 
 This paper formalizes the algebra, proves the key properties, and presents experimental results showing that anti-monoculture mechanisms are required for healthy conversation dynamics.
 
@@ -175,7 +175,7 @@ In Wolfram's classification, linear CAs over finite fields fall into **Class III
 
 ## 7. Implementation
 
-The system is implemented in Rust (`ternary-tenforward/`):
+The system is implemented in Rust (`confidence-cascade/`):
 
 ```rust
 pub struct Speaker {
@@ -243,7 +243,7 @@ $\mathbb{Z}_3$ is not just *a* group on three elements — it is *the only* grou
 
 ---
 
-*Source: `ternary-tenforward/` — TenForward conversation engine, SPIRAL-6 findings, NEGATIVE-SPACE-EMERGENCE paper.*
+*Source: `confidence-cascade/` — TenForward conversation engine, SPIRAL-6 findings, NEGATIVE-SPACE-EMERGENCE paper.*
 
 ---
 
