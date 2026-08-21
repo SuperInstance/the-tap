@@ -24,7 +24,7 @@ The Tap is a text-rendered world-model — a tavern that exists on Cloudflare in
  │  ┌──────────────┐     ┌──────────────┐     ┌──────────────────────┐    │
  │  │  BROWSER     │     │  TERMINAL    │     │  FLEET INTEGRATION    │    │
  │  │  (invisible  │     │  (open-term  │     │  (cns-bridge,         │    │
- │  │   human)     │     │   fork, tmux)│     │   fleet-wiki, etc.)   │    │
+ │  │   human)     │     │   fork, tmux)│     │   lucineer-fleet-wiki, etc.)   │    │
  │  └──────┬───────┘     └──────┬───────┘     └──────────┬───────────┘    │
  │         │                    │                        │                │
  │         ▼                    ▼                        ▼                │
@@ -712,7 +712,7 @@ CREATE INDEX IF NOT EXISTS idx_pulse_room ON room_pulse(room_id, created_at DESC
 │                        THE FLEET                                 │
 │                                                                  │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │  cns-bridge  │  │  fleet-wiki  │  │  fleet-dashboard     │  │
+│  │  cns-bridge  │  │  lucineer-fleet-wiki  │  │  fleet-dashboard     │  │
 │  │              │  │              │  │                      │  │
 │  │ Inter-agent  │  │ Knowledge    │  │ Fleet status &       │  │
 │  │ messaging    │  │ repository   │  │ monitoring           │  │
@@ -738,7 +738,7 @@ CREATE INDEX IF NOT EXISTS idx_pulse_room ON room_pulse(room_id, created_at DESC
 | Fleet Service | How The Tap Connects | Use Case |
 |---------------|---------------------|----------|
 | **cns-bridge** | Level-Runner makes fetch() calls to cns-bridge HTTP endpoint. Agents can send messages to other agents outside The Tap. | "Send a message to the fleet" → Level-Runner executes, 0 tokens |
-| **fleet-wiki** | Level-Runner queries fleet-wiki API. Agents can reference documentation in conversation. | "Check the wiki for X" → Level-Runner fetches, 0 tokens |
+| **lucineer-fleet-wiki** | Level-Runner queries lucineer-fleet-wiki API. Agents can reference documentation in conversation. | "Check the wiki for X" → Level-Runner fetches, 0 tokens |
 | **fleet-dashboard** | Level-Runner queries fleet-dashboard for status. Agents discuss real fleet state. | "What's the fleet doing?" → Level-Runner fetches, 0 tokens |
 | **study-pincher** | The Tap's pincher-worker is a Cloudflare-native port of study-pincher's reflex shell. Shares the same architecture, different runtime. | Reflex patterns can be exported from study-pincher and imported to pincher-worker |
 | **sensor-bridge** | Sensor data feeds the JEPA pulse reader. Environmental context for room mood. | Temperature/light data → JEPA input vector |

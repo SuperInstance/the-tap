@@ -18,7 +18,7 @@ Fable: enters after round 10
 | 7-9 | TBD | TBD | Polish + test + deploy | ⏳ pending |
 | 10+ | Fable | Fable 5 | Final polish pass | ⏳ waiting |
 
-| 1 (coord) | Claude Code | Claude CLI | MUD repos research cluster (5/5) + fix tap-dynamics RPS bug | ✅ done — research/mud-repos/{mud-arena,git-native-mud,ec2mud,crab-trap-web,ternary-tenforward,README}.md; each spot-checked against real source |
+| 1 (coord) | Claude Code | Claude CLI | MUD repos research cluster (5/5) + fix tap-dynamics RPS bug | ✅ done — research/mud-repos/{mud-engine,git-native-mud,ec2mud,crab-trap-web,confidence-cascade,README}.md; each spot-checked against real source |
 
 ### Known issues for whoever picks these up next
 

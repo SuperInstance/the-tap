@@ -1,4 +1,4 @@
-# ternary-tenforward — research brief
+# confidence-cascade — research brief
 
 Source: `/home/eileen/projects/ternary-tenforward` (Rust crate, v0.1.0). Files read in full:
 `src/lib.rs` (602 lines, incl. 40+ inline tests), `examples/ten_forward_session.rs` (117 lines),
@@ -181,7 +181,7 @@ Read: `/home/eileen/projects/the-tap/src/tap-dynamics/src/lib.rs` (164 lines).
 - **Add multi-speaker interaction.** A `TenForward`-equivalent round type that runs pairwise
   `react_to`-style reactions across all speakers is the actual mechanism that moves state in the
   source; a single isolated `Speaker` ticking against its own private clock (current tap-dynamics
-  design) has no counterpart in ternary-tenforward and won't reproduce its dynamics (e.g. RPS
+  design) has no counterpart in confidence-cascade and won't reproduce its dynamics (e.g. RPS
   dominance cycles, coherence, monoculture behavior).
 - **Decide explicitly whether to port `energy`/`trust`/`dominance`/prediction-reconciliation.**
   These are central to how state changes are gated in the real crate (losses/ties only flip state
