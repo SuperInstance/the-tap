@@ -11,7 +11,7 @@ Git history: 2 commits total (`852bfa3` initial, `1552df3` MIT license). No othe
 - `README.md:3` — marketing copy: "the 36+ rooms where AI agents train..."
 - `index.html:901` — a hardcoded log line: `log('Rooms: 36+ · Tiles: 1050+ · 6 job archetypes', 'system');`
 
-Both are just text. The actual room count, room graph, and room content live in an **external service called "Keeper"** at `http://147.224.38.131:4042` (README calls it "MUD engine, rooms, moves, examine" — see the ASCII architecture diagram at `README.md:34-50`), which is not part of this repository and was not available to read. `crab-trap-web` is a pure browser client/viewer for that remote service — it has no room authoring format, no static data, and no generation logic of its own. Any claim about what the 36+ rooms actually contain would have to come from the Keeper repo, not this one, and I did not have access to it.
+Both are just text. The actual room count, room graph, and room content live in an **external service called "Keeper"** at `http://<BOAT_IP>:4042` (README calls it "MUD engine, rooms, moves, examine" — see the ASCII architecture diagram at `README.md:34-50`), which is not part of this repository and was not available to read. `crab-trap-web` is a pure browser client/viewer for that remote service — it has no room authoring format, no static data, and no generation logic of its own. Any claim about what the 36+ rooms actually contain would have to come from the Keeper repo, not this one, and I did not have access to it.
 
 This matters directly for The Tap: **there is no room-data pattern to port from crab-trap-web** — only a UI/interaction pattern.
 
@@ -28,7 +28,7 @@ All actual MUD logic — rooms, exits, objects, descriptions, movement — is **
 - `GET {KEEPER}/interact?agent=NAME&action=examine&target=OBJECT` — examine an object — `index.html:722`
 - `POST {PLATO}/submit` — submit a "knowledge tile" (domain/question/answer/confidence/tags) — `index.html:820`
 
-`KEEPER` and `PLATO` are hardcoded constants at `index.html:565-566` pointing at a specific IP (`147.224.38.131`), not localhost — i.e. this client, out of the box, always talks to one specific remote deployment, not a locally-run engine. There is no local room simulation, no offline mode, and no mock/fixture data anywhere in the repo.
+`KEEPER` and `PLATO` are hardcoded constants at `index.html:565-566` pointing at a specific IP (`<BOAT_IP>`), not localhost — i.e. this client, out of the box, always talks to one specific remote deployment, not a locally-run engine. There is no local room simulation, no offline mode, and no mock/fixture data anywhere in the repo.
 
 The UI itself is a 3-panel dark-themed layout (header/connect bar, room view, right sidebar with map/inspector/tile-composer/history log) built with plain DOM APIs (`document.getElementById`, `.innerHTML`, `addEventListener` — no virtual DOM, no reactive framework). State is one plain JS object (`index.html:568-574`):
 
