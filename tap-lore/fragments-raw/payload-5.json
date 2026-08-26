@@ -1,0 +1,11 @@
+{
+  "model": "deepseek-chat",
+  "messages": [
+    {
+      "role": "user",
+      "content": "You are writing one lore fragment (~400 words of prose) for a dockside tavern world. No headers, no meta-commentary, no questions back — just the fragment itself. Write it as the harbor's oldest story, told about a boat nobody has met.\n\nTHE ONLY WORLD FACTS YOU KNOW (treat as fixed walls):\n1. Everything arrives by water or through the yard; no train, no road worth the name.\n2. Some boats are never explained; the ocean is never fully explained.\n3. It anchors past the reef — the same reef every boat steers around without admitting why.\n\nYOUR ONE QUESTION: There is a boat that never docks — lantern lit, never signals. Who is aboard, and for whom are they waiting?\n"
+    }
+  ],
+  "max_tokens": 900,
+  "temperature": 1.3
+}
