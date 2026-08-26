@@ -1,0 +1,11 @@
+{
+  "model": "deepseek-chat",
+  "messages": [
+    {
+      "role": "user",
+      "content": "You are writing one lore fragment (~400 words of prose) for a dockside tavern world. No headers, no meta-commentary, no questions back — just the fragment itself. Write it as an entry-keeper's aside, half ledger, half confession.\n\nTHE ONLY WORLD FACTS YOU KNOW (treat as fixed walls):\n1. The House keeps the ledger — not people, systems. You don't argue with the House; you appeal to it.\n2. There is an entry in the ledger older than the bar itself.\n3. Nothing leaves the property: no posts, no deploys; the accounts stay on the machine.\n\nYOUR ONE QUESTION: What is the strangest entry in the tab-ledger, and what is it for?\n"
+    }
+  ],
+  "max_tokens": 900,
+  "temperature": 1.3
+}

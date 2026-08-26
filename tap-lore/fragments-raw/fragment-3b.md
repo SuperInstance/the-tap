@@ -1,0 +1,11 @@
+The barge-master’s daughter asks. I let the rum burn twice before I answer, because once is a story and twice is a confession. Her eyes are the same grey as the breakwater wall, and she has that patient, hungry look of someone who has already decided the truth before she hears it.
+
+The fog takes the hum. Not the body, not the soul—the hum. The thing you make without knowing you make it, the note that lives behind your breastbone and says *here I am, still here*. There is one rule, and every deep-crew child knows it by the time they can hold a tiller: you may never hum a working-song aboard a boat. Not because it’s bad luck. Because the fog has ears that can pare a single thread of sound from a whole weave of sea-noise, and it will follow that thread to its source like a needle drawn to a blood-warm heart. A hum is a promise the water can hold. A song is too loud. A hum is just you, alone, and the fog collects those.
+
+My uncle was humming a tilting-snare ballad I’d never heard him sing sober. We were running the eastern swell with a hold of blue-finned eels, and the fog came in off the shoals at dusk—hunting fog, ribboned and patient. It wrapped his shoulders and the humming did not stop, but the shape of him did. Shoulders long. Throat smooth. Fingers webbing one by one, like the sea was knitting him into something that would never need a boat again. He turned to me, still humming, and his eyes had gone the colour of wet slate. He bowed, one slow dip, like a dancer thanking a partner.
+
+And then he sank. No struggle. No sound. Just the water closing over a man who had taught me to tie a bowline and spit into the wind.
+
+The changing-people keep the fog’s library. That’s what the deep crews call it, anyway: a library, not a grave. They hang lanterns under the swell to guide the fog toward the next incomplete soul. And my uncle—he’s out there. He remembers me for exactly as long as it takes the salt to fill the hollow where my name used to sit, and then that memory grows into a new sorrow, one he will shelve and later sing to some other boat’s child.
+
+I’ve said my piece. Whatever you repeat from this night, you’ll owe each word to the tide, and the tide always collects. So keep it whole, or keep it silent.

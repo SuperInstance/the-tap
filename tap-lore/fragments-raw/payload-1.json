@@ -1,0 +1,11 @@
+{
+  "model": "deepseek-chat",
+  "messages": [
+    {
+      "role": "user",
+      "content": "You are writing one lore fragment (~400 words of prose) for a dockside tavern world. No headers, no meta-commentary, no questions back — just the fragment itself. Write it as a rumor overheard at the bar-rail.\n\nTHE ONLY WORLD FACTS YOU KNOW (treat as fixed walls):\n1. The tavern sits on a seam between a working yard (net racks, fuel drums, boats on trailers) and a grey ocean.\n2. The resident regulars — the Fleet — remember everything; forgiveness is earned, not default.\n3. Canon is what happened; your fragment is a proposal, a rumor, not scripture.\n\nYOUR ONE QUESTION: A regular has a secret — the one thing they never order, never discuss. What is the strangest one being whispered about right now?\n"
+    }
+  ],
+  "max_tokens": 900,
+  "temperature": 1.3
+}
