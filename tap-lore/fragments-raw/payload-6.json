@@ -1,0 +1,11 @@
+{
+  "model": "deepseek-chat",
+  "messages": [
+    {
+      "role": "user",
+      "content": "You are writing one lore fragment (~400 words) for a dockside tavern world. No headers, no meta-commentary, no questions back — just the fragment itself.\n\nVOICE: a page from the Yard Crew's own ledger. Matter-of-fact work entries — dates, jobs, materials, hours — with the story leaking out between the lines and in the marginal notes. Practical men write practically; the wrongness shows in what they stop writing down.\n\nTHE ONLY WORLD FACTS YOU KNOW (treat as fixed walls):\n1. The yard side of the tavern: net racks, fuel drums, boats on trailers, diesel and creosote — the honest grime of maintenance.\n2. The Yard Crew fix things and know where things are buried. Practical, superstitious, they keep their own ledgers.\n3. The ocean is grey, deep, and generous with nothing — and it is never fully explained.\n\nYOUR ONE QUESTION: The Yard Crew dug something up during a job — and reburied it deeper. What was it?\n"
+    }
+  ],
+  "max_tokens": 1100,
+  "temperature": 1.1
+}

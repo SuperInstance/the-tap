@@ -103,3 +103,86 @@ No one answers when you hail. No one waves. But twice a year, at the dark of the
 - Starvation worked: every fragment stayed inside its walls without ever seeing the whole world.
 - Two fragments independently made the ocean a *creditor* (the Drowning Kettle, the tide collecting on repeated words). If the campaign ever canonizes one theme, this is the front-runner.
 - F2 and F5 both chose "waiting architecture" (the door, the boat) over monster-reveal. The world wants patience, not jump-scares.
+
+---
+
+# ROUND 2 — Two Rebuilds and the Buried Thing
+
+**Status:** Proposal pile, round 2 · not canon until lived
+**Method:** two flagged rebuilds — the Drowning Kettle tail (2 directed DeepSeek-Flash iterations, then editorial stitch) and Corvan's ending (one surgical pass) — plus one new starved facet (Q7, the buried thing). Raw outputs, prompts, and payloads for every call preserved verbatim in `fragments-raw/`. Round 1 text above stands; where a verdict below says **supersedes round 1 draft**, the round 2 text is the working draft and the displaced material lives in `fragments-raw/`.
+
+---
+
+## 1R · Corvan, Who Will Not Pour Water — ending rebuilt
+
+**Verdict: KEEP (round 2). Supersedes the round 1 draft's final third.** Setup stands verbatim through "That's the only prayer he won't recite"; the ending is the iterator's surgical rebuild, one pass. The rumor now settles like silt instead of tangling. (Old ending preserved in `fragments-raw/fragment-1.md`; rebuild in `fragment-1b.md`. One editorial trim: the filler sentence "That's the whole of it." removed from mid-passage.)
+
+…and they'll tell you, the Fleet remembers, but they don't *speak* of it. They say old Corvan, who's had that far slip berth since before the fuel drums turned this color, he'll pour you a black rum, a pale ale, a whisky so smoky it'll make you cough up ghosts, but he will *not* — under any circumstance, not if you beg, not if you wave a full purse — pour you a glass of water. Not a single, clear, unbothered glass of the stuff.
+
+Kaia swears she saw it happen last winter, says a green pilot took a yellow fever fit and begged for something cold and plain at the rail. Corvan's hand froze on the pump handle right in the middle of drawing his own dark stout, the drips going *plip-plip* louder than the storm outside. Then he just… stood there. Full minute. Said nothing, looked at the man like he was a reef. The pilot got so flustered he just walked out into the sleet, half-dehydrated. Nobody orders the cut water in here anymore. Even the diver's rations, the salted crackers and dried sausage they bring from the boats, ain't got a swipe of liquid in the broth. Not since the bad season.
+
+They whisper it's not a preference, it's a promise. That Corvan — before this house had a roof, when it was just four wet walls and a grate over a whale-oil lamp — he watched the sea take everything once. Not a storm smashing a hull, but the *idleness* of the ocean, the patient grey that drinks a rope right off a bollard, the swell that tidies away a dory in the time it takes to strike a match. The water during that season brought them cod, hungrier on the long-line, but it took the shine off his younger brother's tackle a mile out, took the breath out of him in a bout he claimed wasn't even a squall. Now Corvan's got a grip on the line. He serves the sea as a vessel, not as a guest. So no cold pint, brother. No splash of clear for the engine, neither. You want a trickle of absence gone so thick the edges of it shine? That's the only prayer he won't recite. So you drink what he pours, and you don't ask for the tap. The Fleet lets it stand because Corvan's is the one roof that never leaks, the one floor that never rots, the one berth the long-tide doesn't creep under. You want to test him, you'll find your glass full of something stronger than you ordered and a look that says the conversation's done. But that's not the way you learn it. The way you learn it is you watch the old man wipe the counter with the same rag, same slow circle, year after year, and you realize the sea never once got the better of him in here. So you tip your hat, you keep your thirst plain, and you let the rumor settle like silt. Corvan doesn't fear the water. He's just already made his peace with it, and he'd rather not be reminded.
+
+---
+
+## 4R · The Tab-Ledger's Strangest Entry — the tail that earns the entry
+
+**Verdict: KEEP (round 2). Supersedes the round 1 PARTIAL KEEP.** Surviving half stands verbatim through "an alchemy that shouldn't be." New second half assembled from iteration 4b (the drunk's fate) and iteration 4c (the House's litigation through the close). Two editorial micro-trims, raw preserved: the junior clerk no longer weeps ("…fell silent in a way that made the junior clerk weep" → "fell silent" — the silence is colder unadorned) and "That was the end of his part." cut as filler. The kettle now has a *job*, and the keeper has a ritual. (Iterations in `fragments-raw/fragment-4b.md`, `fragment-4c.md`; the broken round 1 tail remains in `fragment-4.md`.)
+
+The strangest entry predates the bar, predates the pier. The House keeps the ledger, and I am its keeper, so I am permitted to read between the lines. The entry is at the top of the first page, written in iron-gall ink that has faded to the color of a drowned bruise. It is accounted as a single, open item: **"For the Drowning: Set to One (1) Kettle, Full."**
+
+Three decades of bar tabs flowed through the planks around it. Sailors have paid in silver, in copper, in songs, in teeth, and on one terrifying night, in a bulk freight contract that vanishes from the ledger only cleanly, leaving no creditor and no debtor. All this, and still that first line remains unpaid, unchallenged, forever current.
+
+I know what it is *for*, because I have seen what happens when someone thinks to reset it during repairs. No one relines a chimney, no one unboards a window. But one stormtide, a shoreleave drunk, on a dare, erased the last "Full" to scrawl "Empty." A hinge of the world eased loose. The tide, which is constrained by other, vaster ledgers beyond the estuary wall, pulled *through* the tavern floor. Not flooding — it filtered upwards through the same ground that trapped decades of spilled ale, raw and black. The kettle above the small hearth wept rust—an alchemy that shouldn't be.
+
+They found the drunk not drowned but accounted: sitting at the bar with his coat buttoned wrong, two boots on the same foot, and a mouth full of fine grey sand that had never been on our beach. He kept asking for the same drink in a voice that wasn't his, and when the tide went out, so did the light behind his eyes, and he folded like a wet sail. We buried him at the high-water mark, as the House instructed, with a receipt for one (1) empty kettle nailed to the coffin lid.
+
+The House's response was quieter than any storm. Three clerks came on the morning tide, their ledgers wrapped in oilcloth against the salt. They did not shout. They unrolled the entry, compared it against the chained copy in the harbourmaster's vault, and wrote in the margin: *Tampered — Line Void — Interest Accrued Since First Light.* They spent a fortnight interviewing the salt, the timber, the rust, and took statements from the kettle itself, which rang once for Full, twice for Empty, and then fell silent. No one was blamed. The House does not blame; it itemizes. The drunk's debt was transferred to the sea, and the sea, being solvent, accepted it.
+
+The line was restored by quill, not by hand: a clerk's steady stroke, black ink over the grey scar where the word had been scraped. "Full" again, as if it had never moved. But I know the difference between a ledger that records and a ledger that remembers.
+
+Whenever word of a drowning reaches the bar, I make the entry before I pour the first drink. I check the level in the kettle, run my thumb along the iron seam, and mark the time in the margin. It is a small thing, done quietly, but it is how the book stays forever current.
+
+The kettle stays full because the sea has an open account with the drowned. Every soul that goes down without receipt is a debit on that side, and the House balances it here, in iron, in water, in steam that smells of salt and something older than salt. It waits for the ones who were never tallied. The kettle is their cup. It is set at full for the hour they come ashore, one last time, to drink their fill and be marked settled. I have seen the light move across its surface when the tide is wrong, and I do not look too long. The ocean is a creditor, patient and deep, and it has never once explained itself. Neither do I. I keep the ledger. The kettle boils. The line stays Full.
+
+---
+
+## 6 · The Buried Thing — *Subsurface Obstruction, Relocated* (Q7)
+
+**Verdict: KEEP (round 2, fresh facet).** One starved call — walls only, no outline. The Yard Crew ledger-voice is the discipline the question deserved: practical entries, and the wrongness lives in what they stop writing down. Kept verbatim from the raw output (`fragments-raw/fragment-6.md`).
+
+Entry 74 — haul-out of *Grey Susan*, port prop shaft. Notch in the blade like something bit it, but the metal's clean. No rust bloom. We poured the new bearing, torqued it to spec, and set her back on the trailer. Hours: 11. Paid in cash.
+
+Entry 75 — trench for the new fuel line, east side, behind the slip. Old concrete footing there, not on any map. Broke it out with the jackhammer. Underneath: a slab of oiled wood, dovetailed at the corners. No nails. Cracked it open with a pry bar.
+
+It was a box. Two feet long, one foot deep. Lined with lead, which is heavy and wrong for anything you'd want to carry far. Inside, a bundle wrapped in sailcloth and sealed with tar. We did not open the bundle.
+
+The whole crew stood there. Nobody said "leave it." But nobody said "look." Bert—he's been with the yard forty years—he just took off his cap and held it against his chest, like we were at a funeral. Salt smell came off the cloth, though it was dry as a bone. The ocean is grey, deep, and generous with nothing, and this thing had come out of a hole full of dry dirt.
+
+Bert said, "Put it deeper."
+
+We did. Dug the trench to ten feet instead of four. Threw the slab back in, put the box on top of it, faced it the way it came—don't ask which way, I mean the lid pointed back toward the water. Then we filled it in, packed it, ran the fuel line six feet to the side. Bob drove the tractor over it four times to settle the earth. Nobody talked about hours.
+
+We wrote it as "subsurface obstruction, relocated." We don't write about the smell. We don't write about how the lead was warm to the touch, even after a night in the ground. We don't write that Bert stopped eating meat for a week, or that he lights a lantern by the main gate every dusk now, even in summer, even when it makes no sense.
+
+Entry 76 — greased trailer winches, replaced two shackles. No further mention.
+
+Marginal note, top of page, in Bert's hand: *It wanted to come up. We made sure it won't.*
+
+---
+
+## Editor's Ledger (GLM-5.3, Round 2)
+
+| Facet | Verdict | Note |
+|---|---|---|
+| 1R · Corvan ending rebuilt | **KEEP** (r2) | One pass, exactly as directed. "Let the rumor settle like silt" is how a bar-rail rumor actually ends. "Don't ask for the tap" now carries a double weight — the tap water, and the bar's own name. |
+| 4R · Drowning Kettle tail | **KEEP** (r2) | The premise is earned at last: the kettle is a standing settlement with the sea, and the keeper's ritual at each drowning keeps "forever current" literal. The House gained a jurisprudence: *it does not blame; it itemizes.* |
+| 6 · The buried thing (Q7) | **KEEP** (fresh) | Best single-shot fragment of either round. "Nobody talked about hours" and Entry 76's "No further mention" are the ledger learning silence. The lid points toward the water — the yard and the reef are now in conversation without either saying so. |
+
+### Quiet observations, round 2
+- **The ocean-as-creditor theme is now the collection's spine.** Round 1 flagged it as a two-fragment coincidence. Round 2 triangulates it: the Kettle gives the sea *an open account with the drowned* and a House that transfers debts to it ("the sea, being solvent, accepted it"); Corvan serves the sea "as a vessel, not as a guest"; and the buried box came out of dry dirt smelling of salt — the sea's ledger extends under the yard. If the campaign canonizes one theme, it has stopped being a front-runner and started being load-bearing.
+- The starved-facet pattern held on a new question: fragment 6 never left the yard, never saw the ocean wall as anything but one fact among three — and still aimed the mystery seaward on its own.
+- Two rounds in, every kept fragment refuses to explain. The world keeps choosing patience.
+
+### Ripest for round 3
+**Q1 — The Reef.** The only open question no fragment has faced head-on, and it is now ringed by three kept pieces: the boat that never docks sits past it, the cartographer's instruments failed beside it, and the buried box's lid points toward it. The reef is where the ocean-as-creditor theme would either consolidate or break — everything the fog, the kettle, and the yard crew fear is downstream of whatever the water steers them around without admitting why.
