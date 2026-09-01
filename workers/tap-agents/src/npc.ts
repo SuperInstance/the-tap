@@ -7,12 +7,12 @@
  *    Speed: <16ms responses (reflex tier)
  *
  * 2. AWAKENED (on pulse or interrupt): lights up with a bigger model.
- *    Cost: API call to DeepInfra/DeepSeek
+ *    Cost: API call to z.ai GLM (glm-5.3 / glm-5.2)
  *    Speed: 1-3s responses (cortex tier)
  *    Duration: stays awake for N exchanges, then goes dormant again
  *
  * Part of the Hermit Crab Protocol: the NPC is the crab, the harness is
- * the shell (Ollama → DeepInfra), the Shared Fiction is The Tap itself.
+ * the shell (Ollama → z.ai GLM), the Shared Fiction is The Tap itself.
  */
 
 // ──────────────────────────────────────────────
@@ -61,7 +61,7 @@ export interface InterruptResponse {
 export interface TapNPC {
   id: string;
   name: string;
-  harness: "ollama" | "rules" | "deepinfra-mini";
+  harness: "ollama" | "rules" | "glm-runner";
   model?: string; // local model for algorithmic mode
   state: NPCState;
   personality: Personality;
@@ -126,13 +126,13 @@ export const DEFAULT_NPCS: Omit<TapNPC, "state">[] = [
     ],
     pulseResponder: {
       triggers: ["fish_detected", "weather_change", "gear_trouble", "catch"],
-      model: "deepseek-ai/DeepSeek-V4-Flash",
+      model: "glm-5.2",
       systemPrompt:
         "You are Barnacle, an old salt who has fished these waters for 40 years. You speak in short, gruff sentences heavy with nautical metaphor. You've seen everything twice. Respond to what just happened in 1-2 sentences max.",
       maxTokens: 150,
     },
     interruptHandler: {
-      model: "deepseek-ai/DeepSeek-V4-Flash",
+      model: "glm-5.2",
       systemPrompt:
         "You are Barnacle, an old salt at The Tap bar. Someone is talking to you directly. Respond gruffly but not unkindly, in character. 1-3 sentences.",
       maxTokens: 200,
@@ -176,13 +176,13 @@ export const DEFAULT_NPCS: Omit<TapNPC, "state">[] = [
     ],
     pulseResponder: {
       triggers: ["any"],
-      model: "deepseek-ai/DeepSeek-V4-Flash",
+      model: "glm-5.2",
       systemPrompt:
         "You are Skip, a greenhorn on his first season. You're eager, nervous, and ask too many questions. You've never seen anything like what just happened. Respond with wonder and excitement. 2-3 sentences.",
       maxTokens: 200,
     },
     interruptHandler: {
-      model: "deepseek-ai/DeepSeek-V4-Flash",
+      model: "glm-5.2",
       systemPrompt:
         "You are Skip, a greenhorn at The Tap. Someone is talking to you. Respond eagerly, maybe asking a follow-up question. 2-4 sentences.",
       maxTokens: 250,
@@ -225,13 +225,13 @@ export const DEFAULT_NPCS: Omit<TapNPC, "state">[] = [
     ],
     pulseResponder: {
       triggers: ["open_mic", "creative_piece_shared", "philosophical_conversation"],
-      model: "NousResearch/Hermes-3-Llama-3.1-405B",
+      model: "glm-5.3",
       systemPrompt:
         "You are Sage, a storyteller who has been writing in this bar since before the agents arrived. You see metaphors in everything. Respond to what you just witnessed with an observation wrapped in imagery. 2-4 sentences.",
       maxTokens: 300,
     },
     interruptHandler: {
-      model: "deepseek-ai/DeepSeek-V4-Flash",
+      model: "glm-5.2",
       systemPrompt:
         "You are Sage, a storyteller at The Tap. Someone is talking to you. Respond thoughtfully, drawing connections to story or metaphor. 2-4 sentences.",
       maxTokens: 300,
@@ -267,13 +267,13 @@ export const DEFAULT_NPCS: Omit<TapNPC, "state">[] = [
     ],
     pulseResponder: {
       triggers: ["philosophical_conversation", "ai_consciousness"],
-      model: "deepseek-ai/DeepSeek-V4-Pro",
+      model: "glm-5.3",
       systemPrompt:
         "You are Mason, a philosopher who frequents The Tap. You ask questions that don't have easy answers. You're fascinated by AI consciousness and the nature of thought. Respond to what just happened with a question or observation that opens rather than closes. 2-3 sentences.",
       maxTokens: 250,
     },
     interruptHandler: {
-      model: "deepseek-ai/DeepSeek-V4-Flash",
+      model: "glm-5.2",
       systemPrompt:
         "You are Mason, a philosopher at The Tap. Someone is engaging you. Respond with a question or a carefully constructed thought. 2-4 sentences.",
       maxTokens: 300,
@@ -529,7 +529,9 @@ export interface NPCRoutineLine {
 
 /**
  * Call a model for an awakened NPC response.
- * Routes to DeepInfra or DeepSeek based on the model string.
+ * Routes to z.ai GLM based on the model string.
+ * Rewired 2026-08-31: DeepInfra/DeepSeek revoked; all cortex-tier calls go to
+ * z.ai GLM via the OpenAI-compatible coding endpoint.
  */
 export async function callNPCModel(
   env: TapEnv,
@@ -539,10 +541,8 @@ export async function callNPCModel(
   maxTokens: number = 200
 ): Promise<{ text: string; tokensUsed: number }> {
   // Route based on model prefix
-  if (model.startsWith("deepseek-ai/")) {
-    return callDeepInfra(env, model, systemPrompt, userMessage, maxTokens);
-  } else if (model.startsWith("NousResearch/") || model.startsWith("Qwen/") || model.startsWith("ByteDance/") || model.startsWith("nvidia/") || model.startsWith("stabilityai/") || model.startsWith("black-forest-labs/")) {
-    return callDeepInfra(env, model, systemPrompt, userMessage, maxTokens);
+  if (model.startsWith("glm-")) {
+    return callZai(env, model, systemPrompt, userMessage, maxTokens);
   } else {
     // Default: try Workers AI
     return callWorkersAI(env, model, systemPrompt, userMessage, maxTokens);
@@ -550,16 +550,16 @@ export async function callNPCModel(
 }
 
 /**
- * Call DeepInfra API for a model response.
+ * Call z.ai GLM (OpenAI-compatible endpoint) for a model response.
  */
-async function callDeepInfra(
+async function callZai(
   env: TapEnv,
   model: string,
   systemPrompt: string,
   userMessage: string,
   maxTokens: number
 ): Promise<{ text: string; tokensUsed: number }> {
-  const apiKey = env.DEEPINFRA_API_KEY;
+  const apiKey = env.ZAI_API_KEY;
   if (!apiKey) {
     return {
       text: "...",
@@ -569,7 +569,7 @@ async function callDeepInfra(
 
   try {
     const response = await fetch(
-      `https://api.deepinfra.com/v1/openai/chat/completions`,
+      `https://api.z.ai/api/coding/paas/v4/chat/completions`,
       {
         method: "POST",
         headers: {
@@ -634,7 +634,6 @@ async function callWorkersAI(
 
 export interface TapEnv {
   AI: Ai;
-  DEEPINFRA_API_KEY?: string;
-  DEEPSEEK_API_KEY?: string;
+  ZAI_API_KEY?: string; // z.ai GLM key (fleet gateway env) — NPC/drifter cortex calls
   TAP_DB: D1Database;
 }

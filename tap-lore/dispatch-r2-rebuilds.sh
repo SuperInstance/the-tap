@@ -9,19 +9,19 @@
 # Final texts assembled editorially into LORE-FRAGMENTS.md (ROUND 2 section):
 #   4R = surviving half + 4b's drunk paragraph + 4c remainder (2 micro-trims)
 #   1R = r1 setup through the anchor sentence + 1b ending
+# Rewired 2026-08-31: DeepSeek revoked; z.ai GLM via the fleet gateway env.
 set -u
 cd "$(dirname "$0")"
-eval "$(grep -m1 "export DEEPSEEK_API_KEY=" ~/.bashrc)"
-KEY="${DEEPSEEK_API_KEY:-}"
-[ -z "$KEY" ] && { echo "FATAL: key missing"; exit 1; }
+ZAI_KEY="${ZAI_API_KEY:-$(grep -m1 '^FLEET_GATEWAY__PROVIDERS__ZAI__KEYS=' ~/.config/fleet/gateway.env | cut -d= -f2-)}"
+[ -z "$ZAI_KEY" ] && { echo "FATAL: key missing"; exit 1; }
 
 for i in 4b 4c 1b 6; do
   jq -n --rawfile p "fragments-raw/prompt-$i.txt" \
-    '{model:"deepseek-chat",messages:[{role:"user",content:$p}],max_tokens:1100,temperature:1.1}' \
+    '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:1100,temperature:1.1}' \
     > "fragments-raw/payload-$i.json"
-  curl -sS --max-time 180 https://api.deepseek.com/chat/completions \
+  curl -sS --max-time 180 https://api.z.ai/api/coding/paas/v4/chat/completions \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer ${KEY}" \
+    -H "Authorization: Bearer ${ZAI_KEY}" \
     -d @"fragments-raw/payload-$i.json" \
     > "fragments-raw/response-$i.json"
   jq -e '.choices[0].message.content' "fragments-raw/response-$i.json" >/dev/null 2>&1 \

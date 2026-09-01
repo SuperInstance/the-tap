@@ -419,7 +419,7 @@ export class TapPuppeteer {
     try {
       return await callNPCModel(
         env,
-        "deepseek-ai/DeepSeek-V4-Flash",
+        "glm-5.2",
         systemPrompt,
         userMessage,
         120

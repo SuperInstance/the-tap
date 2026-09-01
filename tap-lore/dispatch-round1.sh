@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Phase 2 dispatcher — 5 context-starved DeepSeek V4-Flash facet calls.
-# Key is read from ~/.bashrc into env; NEVER printed.
+# Phase 2 dispatcher — 5 context-starved GLM facet calls.
+# Rewired 2026-08-31: DeepSeek revoked; z.ai GLM via the fleet gateway env.
+# Key is read from ~/.config/fleet/gateway.env into env; NEVER printed.
 set -u
 cd "$(dirname "$0")"
 
-eval "$(grep -m1 "export DEEPSEEK_API_KEY=" ~/.bashrc)"
-KEY="${DEEPSEEK_API_KEY:-}"
-if [ -z "$KEY" ]; then echo "FATAL: key missing"; exit 1; fi
+# z.ai key (GLM, fleet gateway env). Falls back to ZAI_API_KEY if exported.
+ZAI_KEY="${ZAI_API_KEY:-$(grep -m1 '^FLEET_GATEWAY__PROVIDERS__ZAI__KEYS=' ~/.config/fleet/gateway.env | cut -d= -f2-)}"
+[ -z "$ZAI_KEY" ] && { echo "FATAL: key missing"; exit 1; }
 
 mkdir -p fragments-raw
 
@@ -70,11 +71,11 @@ EOF
 for i in 1 2 3 4 5; do
   (
     jq -n --rawfile p "fragments-raw/prompt-$i.txt" \
-      '{model:"deepseek-chat",messages:[{role:"user",content:$p}],max_tokens:900,temperature:1.3}' \
+      '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:900,temperature:1.3}' \
       > "fragments-raw/payload-$i.json"
-    curl -sS --max-time 180 https://api.deepseek.com/chat/completions \
+    curl -sS --max-time 180 https://api.z.ai/api/coding/paas/v4/chat/completions \
       -H "Content-Type: application/json" \
-      -H "Authorization: Bearer ${KEY}" \
+      -H "Authorization: Bearer ${ZAI_KEY}" \
       -d @"fragments-raw/payload-$i.json" \
       > "fragments-raw/response-$i.json"
   ) &

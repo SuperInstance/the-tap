@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Phase 3 round 2 — deepen the 2 most promising fragments (cellar, fog).
+# Rewired 2026-08-31: DeepSeek revoked; z.ai GLM via the fleet gateway env.
 set -u
 cd "$(dirname "$0")"
-eval "$(grep -m1 "export DEEPSEEK_API_KEY=" ~/.bashrc)"
-KEY="${DEEPSEEK_API_KEY:-}"
-[ -z "$KEY" ] && { echo "FATAL: key missing"; exit 1; }
+ZAI_KEY="${ZAI_API_KEY:-$(grep -m1 '^FLEET_GATEWAY__PROVIDERS__ZAI__KEYS=' ~/.config/fleet/gateway.env | cut -d= -f2-)}"
+[ -z "$ZAI_KEY" ] && { echo "FATAL: key missing"; exit 1; }
 
 cat > fragments-raw/prompt-2b.txt <<'EOF'
 Below is a draft lore fragment you wrote for a dockside tavern world. Revise and deepen it. Keep the first-person voice of the cellar itself — that voice is the best thing in the draft. Fix the drift in the final third (the images pile up and lose the thread). Specifically deepen: the low door with headless nails (who set them — give ONE concrete remembered detail, not an explanation); the vault with the dustless wine bottle (what the cellar feels when something visits it); and end on the drip that is in tune with its bones. ~450 words. No headers, no meta — just the fragment.
@@ -23,11 +23,11 @@ cat fragments-raw/fragment-3.md >> fragments-raw/prompt-3b.txt
 for i in 2b 3b; do
   (
     jq -n --rawfile p "fragments-raw/prompt-$i.txt" \
-      '{model:"deepseek-chat",messages:[{role:"user",content:$p}],max_tokens:1000,temperature:1.1}' \
+      '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:1000,temperature:1.1}' \
       > "fragments-raw/payload-$i.json"
-    curl -sS --max-time 180 https://api.deepseek.com/chat/completions \
+    curl -sS --max-time 180 https://api.z.ai/api/coding/paas/v4/chat/completions \
       -H "Content-Type: application/json" \
-      -H "Authorization: Bearer ${KEY}" \
+      -H "Authorization: Bearer ${ZAI_KEY}" \
       -d @"fragments-raw/payload-$i.json" \
       > "fragments-raw/response-$i.json"
   ) &

@@ -234,7 +234,7 @@ export function createSeed(
   const openingLine = overrides?.openingLine ?? generateOpeningLine(personalityVector, creatorState);
   const backstory = overrides?.backstory ?? generateBackstory(personalityVector, creatorState);
   const conversationSeed = overrides?.conversationSeed ?? creatorState.creativeConcern;
-  const modelToUse = overrides?.modelToUse ?? "deepseek-ai/DeepSeek-V4-Flash";
+  const modelToUse = overrides?.modelToUse ?? "glm-5.2";
 
   return {
     id,
