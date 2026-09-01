@@ -17,7 +17,7 @@ ZAI_KEY="${ZAI_API_KEY:-$(grep -m1 '^FLEET_GATEWAY__PROVIDERS__ZAI__KEYS=' ~/.co
 
 for i in 4b 4c 1b 6; do
   jq -n --rawfile p "fragments-raw/prompt-$i.txt" \
-    '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:1100,temperature:1.1}' \
+    '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:1100,temperature:1.1,thinking:{type:"disabled"}}' \
     > "fragments-raw/payload-$i.json"
   curl -sS --max-time 180 https://api.z.ai/api/coding/paas/v4/chat/completions \
     -H "Content-Type: application/json" \

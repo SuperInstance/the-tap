@@ -577,13 +577,17 @@ async function callZai(
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: model,
+          model,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userMessage },
           ],
           max_tokens: maxTokens,
           temperature: 0.8,
+          // GLM-5.3/5.2 are thinking models: without this, short max_tokens
+          // can be consumed by reasoning and content comes back empty.
+          // Verified harmless on glm-5-turbo (2026-08-31).
+          thinking: { type: "disabled" },
         }),
       }
     );

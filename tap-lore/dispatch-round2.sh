@@ -23,7 +23,7 @@ cat fragments-raw/fragment-3.md >> fragments-raw/prompt-3b.txt
 for i in 2b 3b; do
   (
     jq -n --rawfile p "fragments-raw/prompt-$i.txt" \
-      '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:1000,temperature:1.1}' \
+      '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:1000,temperature:1.1,thinking:{type:"disabled"}}' \
       > "fragments-raw/payload-$i.json"
     curl -sS --max-time 180 https://api.z.ai/api/coding/paas/v4/chat/completions \
       -H "Content-Type: application/json" \

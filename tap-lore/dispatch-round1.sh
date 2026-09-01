@@ -71,7 +71,7 @@ EOF
 for i in 1 2 3 4 5; do
   (
     jq -n --rawfile p "fragments-raw/prompt-$i.txt" \
-      '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:900,temperature:1.3}' \
+      '{model:"glm-5.3",messages:[{role:"user",content:$p}],max_tokens:900,temperature:1.3,thinking:{type:"disabled"}}' \
       > "fragments-raw/payload-$i.json"
     curl -sS --max-time 180 https://api.z.ai/api/coding/paas/v4/chat/completions \
       -H "Content-Type: application/json" \
