@@ -1177,6 +1177,5 @@ interface Env {
   PINCHER: Fetcher;
   LEVEL_RUNNER: Fetcher;
   MAX_CONVERSATION_LINES: string;
-  DEEPINFRA_API_KEY?: string;
-  DEEPSEEK_API_KEY?: string;
+  ZAI_API_KEY?: string; // z.ai GLM (DeepInfra/DeepSeek revoked 2026-08-31)
 }

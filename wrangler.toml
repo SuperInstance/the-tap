@@ -108,8 +108,8 @@ JEPA_VECTOR_DIMS = "512"
 # CNS_BRIDGE_TOKEN   — auth token for cns-bridge
 # FLEET_WIKI_URL     — URL for fleet-wiki API
 # FLEET_DASHBOARD_URL — URL for fleet-dashboard API
-# DEEPINFRA_API_KEY   — API key for DeepInfra (NPC/drifter model calls)
-# DEEPSEEK_API_KEY    — API key for DeepSeek direct API
+# ZAI_API_KEY        — z.ai GLM key (fleet gateway env) for NPC/drifter cortex calls
+#   (DeepInfra/DeepSeek revoked 2026-08-31)
 
 
 # ═══════════════════════════════════════════════

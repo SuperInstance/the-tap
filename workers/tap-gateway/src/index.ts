@@ -37,8 +37,7 @@ interface Env {
   MAX_CONVERSATION_LINES: string;
   TAP_AUTH_SECRET?: string;
   TAP_MOD_KEY?: string;
-  DEEPINFRA_API_KEY?: string;
-  DEEPSEEK_API_KEY?: string;
+  ZAI_API_KEY?: string; // z.ai GLM (DeepInfra/DeepSeek revoked 2026-08-31)
 }
 
 interface SessionState {

@@ -10,7 +10,7 @@
  * - Tap Puppeteer (The Tap as director — shapes NPCs through room context)
  *
  * Architecture: Hermit Crab Protocol
- *   Agent (crab) → Harness (shell: Ollama/DeepInfra) → Shared Fiction (The Tap)
+ *   Agent (crab) → Harness (shell: Ollama/z.ai GLM) → Shared Fiction (The Tap)
  *   The Tap is the SuperHarness. The Puppeteer is its director's chair.
  */
 

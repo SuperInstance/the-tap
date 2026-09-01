@@ -5,7 +5,7 @@
  * or the weather changes — the pulse fires.
  *
  * NPCs whose pulseResponder matches the event wake up:
- * - Their model upgrades from local/cheap to DeepInfra/DeepSeek
+ * - Their model upgrades from local/cheap to z.ai GLM
  * - They stay awake for N exchanges (awakeness_decay)
  * - Then they fall back asleep to their algorithmic routine
  *
