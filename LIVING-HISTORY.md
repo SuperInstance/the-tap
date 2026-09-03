@@ -846,7 +846,7 @@ async function exportToAiWritings(req: ExportRequest): Promise<ExportResult> {
   // 5. Register export
   await registerExport(req, entries, narrative);
 
-  return { success: true, url: `https://github.com/casey-digennaro/ai-writings/blob/main/${req.target_path}` };
+  return { success: true, url: `https://github.com/SuperInstance/AI-Writings/blob/main/${req.target_path}` };
 }
 ```
 
