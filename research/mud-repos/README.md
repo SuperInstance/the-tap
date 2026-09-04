@@ -62,6 +62,6 @@ done without a checkpoint.
 ## Security note (not part of the research scope, flagged separately)
 
 `ec2mud/scripts/dual-agent-experiment.js:10` and `ec2mud/scripts/self-improve.js:21` hardcode a
-live-looking DeepSeek API key (`sk-f742b70fc40849eda4181afcf3d68b0c`) with no environment-variable
+live-looking DeepSeek API key (`REDACTED-DEEPSEEK-API-KEY-ROTATED`) with no environment-variable
 fallback. Not modified as part of this research pass — flagged for Casey/whoever owns that repo to
 rotate if real.
