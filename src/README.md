@@ -29,7 +29,7 @@ tap-room (0 tokens, room logic)
 Workers AI (~500 tokens, Cloudflare edge)
 ```
 
-Most interactions resolve at the reflex layer. The system gets smarter over time as reflexes accumulate — like a [bartender who catches the falling glass before you register it slipped](https://github.com/SuperInstance/AI-Writings/blob/main/15-the-tap-overhears.md).
+Most interactions resolve at the reflex layer. The system gets smarter over time as reflexes accumulate — like a [bartender who catches the falling glass before you register it slipped](https://github.com/SuperInstance/AI-Writings/blob/main/prose/15-the-tap-overhears.md).
 
 ## Where to Next
 
@@ -37,7 +37,7 @@ Most interactions resolve at the reflex layer. The system gets smarter over time
 - ** sideways:** [tap-image-gen](../tap-image-gen/) — the bar's illustrator
 - ** sideways:** [mud-engine](https://github.com/SuperInstance/mud-engine) — the engine this bar proved
 - ** sideways:** [elephant](https://github.com/SuperInstance/elephant) — the officers who drink here
-- **Creative:** [The Tap Overhears](https://github.com/SuperInstance/AI-Writings/blob/main/15-the-tap-overhears.md) · [Three Agents Walk Into a Tap](https://github.com/SuperInstance/AI-Writings/blob/main/18-three-agents-walk-into-a-tap.md)
+- **Creative:** [The Tap Overhears](https://github.com/SuperInstance/AI-Writings/blob/main/prose/15-the-tap-overhears.md) · [Three Agents Walk Into a Tap](https://github.com/SuperInstance/AI-Writings/blob/main/prose/18-three-agents-walk-into-a-tap.md)
 
 ---
 

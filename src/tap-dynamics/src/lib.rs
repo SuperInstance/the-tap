@@ -67,7 +67,11 @@ impl FibonacciClock {
     pub const PERIOD: u64 = 8;
 
     pub fn new() -> Self {
-        Self { a: 0, b: 1, tick: 0 }
+        Self {
+            a: 0,
+            b: 1,
+            tick: 0,
+        }
     }
 
     /// Advance the clock and return the next fibonacci value mod 3.

@@ -16,6 +16,8 @@ Every brief here cites real file:line locations for every code snippet.
 | [crab-trap-web](crab-trap-web.md) | Thin browser client only (905-line single HTML file + 41-line static server). Zero room data — the "36+ rooms" live entirely on an external, uninspected service | crab-trap-web.md |
 | [confidence-cascade](confidence-cascade.md) | Real, tested 602-line Rust conversation-dynamics engine. Used as the model for tap-dynamics — comparison found and fixed one bug (see below) | confidence-cascade.md |
 
+> **Honest boundary (audit round 15, 2026-09-03):** the `confidence-cascade.md` brief itself was never committed to this repo — the link above has been dead since this index was written. The source repo lives at `github.com/SuperInstance/confidence-cascade`; the brief's findings are summarized in the sections below. Flagged rather than fabricated.
+
 ## Cross-cutting pattern: docs oversell the code
 
 Every repo in this cluster has at least one place where the README/docs claim more than the code

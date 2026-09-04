@@ -116,7 +116,10 @@ impl RoomGraph {
         if !self.rooms.contains_key(&to) {
             return Err(RoomError::NoSuchRoom(to));
         }
-        let room = self.rooms.get_mut(&from).ok_or(RoomError::NoSuchRoom(from))?;
+        let room = self
+            .rooms
+            .get_mut(&from)
+            .ok_or(RoomError::NoSuchRoom(from))?;
         room.exits.insert(dir, to);
         if bidirectional {
             let back = self.rooms.get_mut(&to).ok_or(RoomError::NoSuchRoom(to))?;
@@ -174,7 +177,10 @@ impl RoomGraph {
     }
 
     pub fn place_agent(&mut self, agent: AgentId, room: RoomId) -> Result<(), RoomError> {
-        let room = self.rooms.get_mut(&room).ok_or(RoomError::NoSuchRoom(room))?;
+        let room = self
+            .rooms
+            .get_mut(&room)
+            .ok_or(RoomError::NoSuchRoom(room))?;
         if !room.agents.contains(&agent) {
             room.agents.push(agent);
         }
@@ -182,7 +188,10 @@ impl RoomGraph {
     }
 
     pub fn place_item(&mut self, item: ItemId, room: RoomId) -> Result<(), RoomError> {
-        let room = self.rooms.get_mut(&room).ok_or(RoomError::NoSuchRoom(room))?;
+        let room = self
+            .rooms
+            .get_mut(&room)
+            .ok_or(RoomError::NoSuchRoom(room))?;
         if !room.items.contains(&item) {
             room.items.push(item);
         }
@@ -191,7 +200,10 @@ impl RoomGraph {
 
     /// Remove an item from a room. Returns `Err` if the room or item doesn't exist.
     pub fn remove_item(&mut self, item: ItemId, room: RoomId) -> Result<(), RoomError> {
-        let r = self.rooms.get_mut(&room).ok_or(RoomError::NoSuchRoom(room))?;
+        let r = self
+            .rooms
+            .get_mut(&room)
+            .ok_or(RoomError::NoSuchRoom(room))?;
         let idx = r
             .items
             .iter()
@@ -215,7 +227,10 @@ impl RoomGraph {
                 .ok_or(RoomError::NoSuchExit(from, dir))?
         };
         {
-            let src = self.rooms.get_mut(&from).ok_or(RoomError::NoSuchRoom(from))?;
+            let src = self
+                .rooms
+                .get_mut(&from)
+                .ok_or(RoomError::NoSuchRoom(from))?;
             let idx = src
                 .agents
                 .iter()
@@ -223,7 +238,10 @@ impl RoomGraph {
                 .ok_or(RoomError::AgentNotPresent(agent, from))?;
             src.agents.remove(idx);
         }
-        let dst = self.rooms.get_mut(&dest).ok_or(RoomError::NoSuchRoom(dest))?;
+        let dst = self
+            .rooms
+            .get_mut(&dest)
+            .ok_or(RoomError::NoSuchRoom(dest))?;
         dst.agents.push(agent);
         Ok(dest)
     }

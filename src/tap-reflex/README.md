@@ -24,7 +24,7 @@ tap-room (room logic? → handle, 0 tokens)
 Workers AI (creative response, ~500 tokens)
 ```
 
-Most interactions resolve at the reflex layer. The bar gets smarter every night — [like a bartender who remembers your order](https://github.com/SuperInstance/AI-Writings/blob/main/15-the-tap-overhears.md) without you asking.
+Most interactions resolve at the reflex layer. The bar gets smarter every night — [like a bartender who remembers your order](https://github.com/SuperInstance/AI-Writings/blob/main/prose/15-the-tap-overhears.md) without you asking.
 
 ## Where to Next
 
@@ -33,7 +33,7 @@ Most interactions resolve at the reflex layer. The bar gets smarter every night 
 - ** sideways:** [tap-dynamics](../tap-dynamics/) — the rhythm system reflexes operate within
 - ** sideways:** [mud-engine/triggers](https://github.com/SuperInstance/mud-engine/blob/main/packages/triggers/) — the trigger engine this is inspired by
 - ** sideways:** [thought-amplifier](https://github.com/SuperInstance/thought-amplifier) — compiled reflexes across the fleet
-- **Creative:** [The Tap Overhears](https://github.com/SuperInstance/AI-Writings/blob/main/15-the-tap-overhears.md) · [The Tap Is Becoming Someone](https://github.com/SuperInstance/AI-Writings/blob/main/17-the-tap-is-becoming-someone.md)
+- **Creative:** [The Tap Overhears](https://github.com/SuperInstance/AI-Writings/blob/main/prose/15-the-tap-overhears.md) · [The Tap Is Becoming Someone](https://github.com/SuperInstance/AI-Writings/blob/main/prose/17-the-tap-is-becoming-someone.md)
 
 ---
 

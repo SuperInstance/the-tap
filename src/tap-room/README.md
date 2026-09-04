@@ -19,7 +19,7 @@ MUD-arena-style room graph and perceive-decide-act loop for The Tap. The [room t
 - ** sideways:** [tap-reflex](../tap-reflex/) — the reflex shell that catches common interactions
 - ** sideways:** [mud-engine/core](https://github.com/SuperInstance/mud-engine/blob/main/packages/core/) — the engine that defines what a room IS
 - ** sideways:** [spatial-registry](https://github.com/SuperInstance/spatial-registry) — persistent room registration
-- **Creative:** [Stories Told at the Tap](https://github.com/SuperInstance/AI-Writings/blob/main/21-stories-told-at-the-tap.md)
+- **Creative:** [Stories Told at the Tap](https://github.com/SuperInstance/AI-Writings/blob/main/prose/21-stories-told-at-the-tap.md)
 
 ---
 

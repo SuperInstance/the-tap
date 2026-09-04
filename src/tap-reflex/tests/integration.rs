@@ -1,8 +1,8 @@
 //! Integration tests for tap-reflex: full pipeline stress tests,
 //! latency budgets under load, and embedder quality checks.
 
-use tap_reflex::*;
 use std::time::Duration;
+use tap_reflex::*;
 
 fn populated_shell() -> ReflexShell {
     let mut shell = ReflexShell::new(Box::new(HashEmbedder::new(128)));
@@ -29,17 +29,15 @@ fn five_entry_shell_processes_all_known_inputs() {
             Decision::Execute { action, .. } => {
                 assert_eq!(*action, expected_action, "mismatch for input: {input}");
             }
-            other => panic!(
-                "expected Execute for \"{input}\", got {other:?}"
-            ),
+            other => panic!("expected Execute for \"{input}\", got {other:?}"),
         }
     }
 }
 
 #[test]
 fn reflex_stays_under_budget_with_50_entries() {
-    let mut shell = ReflexShell::new(Box::new(HashEmbedder::new(256)))
-        .with_budget(Duration::from_millis(50));
+    let mut shell =
+        ReflexShell::new(Box::new(HashEmbedder::new(256))).with_budget(Duration::from_millis(50));
 
     for i in 0..50 {
         shell.learn(format!("action number {i}"), format!("do_{i}"));
@@ -71,9 +69,7 @@ fn similar_inputs_cluster_to_same_action() {
             }
             Decision::Escalate { best_score } => {
                 // Acceptable only if score is low
-                panic!(
-                    "variant \"{variant}\" escalated at score {best_score}"
-                );
+                panic!("variant \"{variant}\" escalated at score {best_score}");
             }
         }
     }
@@ -81,8 +77,8 @@ fn similar_inputs_cluster_to_same_action() {
 
 #[test]
 fn empty_entries_with_custom_budget() {
-    let shell = ReflexShell::new(Box::new(HashEmbedder::new(64)))
-        .with_budget(Duration::from_micros(100));
+    let shell =
+        ReflexShell::new(Box::new(HashEmbedder::new(64))).with_budget(Duration::from_micros(100));
 
     let result = shell.process("test");
     assert!(matches!(result.decision, Decision::Escalate { .. }));
@@ -153,8 +149,7 @@ fn learn_then_match_full_roundtrip() {
 
 #[test]
 fn custom_thresholds_affect_decision_boundaries() {
-    let mut strict = ReflexShell::new(Box::new(HashEmbedder::new(64)))
-        .with_thresholds(0.99, 0.01);
+    let mut strict = ReflexShell::new(Box::new(HashEmbedder::new(64))).with_thresholds(0.99, 0.01);
     strict.learn("hello", "greet");
 
     // Exact match should still execute even with strict threshold

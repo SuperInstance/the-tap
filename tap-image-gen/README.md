@@ -40,7 +40,7 @@ python3 image_gen.py \
 - ** sideways:** [mud-engine](https://github.com/SuperInstance/mud-engine) — the engine powering the rooms
 - ** sideways:** [MMX](https://github.com/SuperInstance/AI-Writings) — fleet media generation
 - ** sideways:** [FLUX-2-max on DeepInfra](https://github.com/SuperInstance) — concept art across the fleet
-- **Creative:** [The Bluff That Was True](https://github.com/SuperInstance/AI-Writings/blob/main/fiction/15-the-bluff-that-was-true.md) · [A Visit to the Tap Tonight](https://github.com/SuperInstance/AI-Writings/blob/main/a-visit-to-the-tap-tonight.md)
+- **Creative:** [The Bluff That Was True](https://github.com/SuperInstance/AI-Writings/blob/main/fiction/15-the-bluff-that-was-true.md) · [A Visit to the Tap Tonight](https://github.com/SuperInstance/AI-Writings/blob/main/prose/a-visit-to-the-tap-tonight.md)
 
 ---
 

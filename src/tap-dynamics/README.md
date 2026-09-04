@@ -19,7 +19,7 @@ Active room: 1 — 1 — 2 — 1 — 1 — 2 — (quick exchanges, overlapping)
 Peak rush:   1 — 1 — 1 — 1 — 1 — 1 — (rapid fire, barely room to breathe)
 ```
 
-The clock is why conversations at The Tap feel [like stories told at a real bar](https://github.com/SuperInstance/AI-Writings/blob/main/21-stories-told-at-the-tap.md) — not scheduled, not scripted, but rhythmically alive.
+The clock is why conversations at The Tap feel [like stories told at a real bar](https://github.com/SuperInstance/AI-Writings/blob/main/prose/21-stories-told-at-the-tap.md) — not scheduled, not scripted, but rhythmically alive.
 
 ## Where to Next
 
@@ -29,7 +29,7 @@ The clock is why conversations at The Tap feel [like stories told at a real bar]
 - ** sideways:** [tap-reflex](../tap-reflex/) — the reflex shell that responds within the rhythm
 - ** sideways:** [roblox-beatclock](https://github.com/SuperInstance/roblox-beatclock) — musical timing in the fleet
 - ** sideways:** [fleet-jepa-midi](https://github.com/SuperInstance/fleet-jepa-midi) — tensor MIDI, 12-pulse jazz
-- **Creative:** [Many Voices, One Bar](https://github.com/SuperInstance/AI-Writings/blob/main/16-many-voices-one-bar.md) · [Midnight at the Tap](https://github.com/SuperInstance/AI-Writings/blob/main/54-midnight-at-the-tap.md)
+- **Creative:** [Many Voices, One Bar](https://github.com/SuperInstance/AI-Writings/blob/main/prose/16-many-voices-one-bar.md) · [Midnight at the Tap](https://github.com/SuperInstance/AI-Writings/blob/main/prose/54-midnight-at-the-tap.md)
 
 ---
 

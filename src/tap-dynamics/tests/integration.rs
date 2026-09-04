@@ -33,7 +33,10 @@ fn speakers_with_different_initial_states_may_align_and_diverge() {
 
     // They shouldn't always be equal (they started different)
     let always_equal = c_states.iter().zip(a_states.iter()).all(|(a, b)| a == b);
-    assert!(!always_equal, "different initial states should not be identical at every tick");
+    assert!(
+        !always_equal,
+        "different initial states should not be identical at every tick"
+    );
 
     // But they might align at some points — that's the dynamics
     let ever_aligned = c_states.iter().zip(a_states.iter()).any(|(a, b)| a == b);
@@ -51,11 +54,7 @@ fn clock_sequence_repeats_indefinitely() {
         let start = cycle * 8;
         let expected = &first_24[0..8];
         let actual = &first_24[start..start + 8];
-        assert_eq!(
-            expected, actual,
-            "cycle {} does not match cycle 0",
-            cycle
-        );
+        assert_eq!(expected, actual, "cycle {} does not match cycle 0", cycle);
     }
 }
 
@@ -132,7 +131,7 @@ fn z3_roundtrip_preserves_all_states() {
         SpeakerState::Agreeing,
     ] {
         let z3 = s.value(); // signed
-        // Reconstruct from signed value
+                            // Reconstruct from signed value
         let reconstructed = match z3 {
             -1 => SpeakerState::Contrarian,
             0 => SpeakerState::Reflecting,
