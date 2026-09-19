@@ -7,3 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 binding = "TAP_DB"
 database_name = "tap-db"
 database_id = "3570d433-17f5-4ce8-a1a4-435b64013e07"
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "VECTORIZE_INDEX"
+index_name = "tap-memory"

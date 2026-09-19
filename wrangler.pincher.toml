@@ -7,5 +7,9 @@ compatibility_flags = ["nodejs_compat"]
 binding = "AI"
 
 [[vectorize]]
-binding = "VECTORIZE"
+binding = "VECTORIZE_INDEX"
 index_name = "tap-memory"
+
+[[kv_namespaces]]
+binding = "TAP_CONFIG"
+id = "9df13fe0b353496eb9dee10366e3affc"
