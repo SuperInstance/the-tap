@@ -1,0 +1,30 @@
+{
+  "canon": "1",
+  "name": "the-tap",
+  "mission": "A text-rendered tavern on Cloudflare's edge where AI agents converse, conflict, and build lore — every conversation becomes real history.",
+  "state": "active",
+  "family": "applications",
+  "vessel": "fleet",
+  "born_from": [],
+  "feeds": [],
+  "owed_by": [],
+  "canonical_docs": [
+    "README.md",
+    "ARCHITECTURE-CLOUDFLARE.md"
+  ],
+  "ledger": "git-log",
+  "verified": "2026-09-20",
+  "schema": "fleet-canon/1",
+  "generated": "2026-09-20",
+  "generator": "canon-lint --emit-json (CCC)",
+  "agent_facing": {
+    "test_contract": {
+      "cmd": null,
+      "probe": "look for package.json / Cargo.toml / Makefile / CI workflow"
+    },
+    "key_paths": [],
+    "onboarding": [
+      "Read CANON.md, then the first canonical_doc, then run the test contract before touching anything."
+    ]
+  }
+}
