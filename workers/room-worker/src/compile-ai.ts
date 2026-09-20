@@ -9,12 +9,29 @@
  * throws: any AI failure or malformed output falls back to a HYBRID-tier
  * template reply, so the perceive-decide-act loop stays alive.
  *
+ * Grounding (steering correction, Casey 2026-09-20): the prompt is grounded
+ * by the room's VALUES LEDGER (values-ledger.ts) — a record of what the
+ * room's people have actually done, each entry citing its transcript
+ * evidence. The prompt presents the ledger as the room's origin, never as
+ * an instruction. The pincher reflex rides inside the ledger as one datum.
+ *
+ * Model binding (lane-l): the compile model rides `env.COMPILE_MODEL` with
+ * the hardcoded string as default. An invalid override never throws — the
+ * binding error is caught and degrades to HYBRID like any other failure.
+ *
  * UNVERIFIED OFFLINE: the exact runtime behavior of the Workers AI binding
  * (latency, error shapes, response envelopes under load) can only be
  * confirmed on a credentialed deploy. What IS verified: prompt construction,
- * defensive parsing, and the fallback path — all covered by node tests.
+ * defensive parsing, the fallback path, model resolution, and the full
+ * perceive-decide-act loop under mock bindings — all covered by node tests.
  */
 
+import {
+  renderLedgerAsOrigin,
+  type ValuesLedger,
+} from "./values-ledger.ts";
+
+/** Default when env.COMPILE_MODEL is unset. Override via wrangler vars. */
 export const COMPILE_MODEL = "@cf/meta/llama-3.1-8b-instruct";
 
 /** Max characters we let a compiled reply carry into the room. */
@@ -28,13 +45,36 @@ export interface CompileViaAIInput {
   intent: string;
   transcript: { displayName: string; content: string }[];
   summary?: string;
-  reflexAction?: string;
-  reflexScore?: number;
+  /**
+   * The room's values ledger — grounding for the compile prompt.
+   * The reflex is already inside it as one entry; do NOT pass the
+   * reflex separately.
+   */
+  ledger?: ValuesLedger | null;
+}
+
+/**
+ * Resolve the compile model from the environment. `env.COMPILE_MODEL`
+ * overrides; the default constant stands when unset, empty, or garbage.
+ * Never throws.
+ */
+export function resolveCompileModel(
+  env: { COMPILE_MODEL?: unknown } | null | undefined
+): string {
+  try {
+    const raw = env?.COMPILE_MODEL;
+    if (raw == null) return COMPILE_MODEL;
+    const s = typeof raw === "string" ? raw.trim() : String(raw).trim();
+    if (s.length === 0 || s.length > 120) return COMPILE_MODEL;
+    return s;
+  } catch {
+    return COMPILE_MODEL;
+  }
 }
 
 /**
  * Build the compilation prompt: recent transcript + persona state + intent,
- * plus the pincher's best reflex match as a style hint when it has one.
+ * grounded by the values ledger rendered as the room's origin.
  */
 export function buildCompilePrompt(input: CompileViaAIInput): string {
   const transcriptBlock =
@@ -48,10 +88,9 @@ export function buildCompilePrompt(input: CompileViaAIInput): string {
     ? `\nContext so far: ${input.summary}\n`
     : "";
 
-  const reflexBlock =
-    input.reflexAction && (input.reflexScore ?? 0) > 0
-      ? `\nA similar past moment went like this (style hint, do not copy): "${input.reflexAction}"\n`
-      : "";
+  const ledgerBlock = input.ledger
+    ? `\n${renderLedgerAsOrigin(input.ledger)}\n\nThe ledger above is the room's origin — let it ground you, not script you.\n`
+    : "";
 
   return `You are ${input.agentDisplayName} (${input.agentState}) in "${
     input.roomName
@@ -59,7 +98,7 @@ export function buildCompilePrompt(input: CompileViaAIInput): string {
 
 Recent conversation:
 ${transcriptBlock}
-${summaryBlock}${reflexBlock}
+${summaryBlock}${ledgerBlock}
 ${input.agentDisplayName} wants to: "${input.intent}"
 
 Write ${input.agentDisplayName}'s next line in character. 1-3 sentences, natural bar conversation. No stage directions in brackets unless it's an emote. Don't repeat what others just said.`;
@@ -96,7 +135,8 @@ export function hybridFallback(input: {
 /**
  * Compile a MODEL-tier reply. `callModel` is the injectable adapter — in
  * production it performs the `env.AI.run` text-generation call; in tests it
- * is a mock. NEVER throws: any failure degrades to the HYBRID fallback.
+ * is a mock. NEVER throws: any failure (including an invalid model name,
+ * which surfaces as a binding error) degrades to the HYBRID fallback.
  */
 export async function compileViaAICore(
   input: CompileViaAIInput,
@@ -109,7 +149,8 @@ export async function compileViaAICore(
       return { content, tokens: 150 };
     }
   } catch {
-    // AI binding unreachable / errored — degrade, never propagate.
+    // AI binding unreachable / errored (incl. unknown model override) —
+    // degrade, never propagate.
   }
   return { content: hybridFallback(input), tokens: 0 };
 }

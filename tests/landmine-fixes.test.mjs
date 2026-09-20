@@ -55,8 +55,6 @@ describe('compileViaAICore (landmine 1: MODEL-tier escalation)', () => {
       { displayName: 'Corvan', content: 'wrong how?' },
     ],
     summary: 'a storm is coming',
-    reflexAction: 'Mara once warned about a squall',
-    reflexScore: 0.82,
   };
 
   it('returns AI content when the binding returns a well-formed envelope', async () => {
@@ -129,7 +127,24 @@ describe('compileViaAICore (landmine 1: MODEL-tier escalation)', () => {
 });
 
 describe('buildCompilePrompt', () => {
-  it('includes persona, room, transcript, intent and reflex style hint', () => {
+  const ledgerFixture = () => ({
+    entries: [
+      {
+        id: 'refusal:corvan:drowned',
+        value: 'refuses to speak of drowned',
+        evidence: [
+          { source: 'transcript', ref: '0', quote: 'I won\u2019t name the drowned ship, not tonight' },
+          { source: 'transcript', ref: '2', quote: 'Still won\u2019t name her.' },
+        ],
+        firstSeenTurn: 0,
+        lastSeenTurn: 2,
+        strength: 0.65,
+      },
+    ],
+    truncated: false,
+  });
+
+  it('includes persona, room, transcript, intent and the ledger-as-origin block', () => {
     const prompt = buildCompilePrompt({
       roomName: 'The Tap',
       roomDescription: 'a dockside bar',
@@ -137,14 +152,17 @@ describe('buildCompilePrompt', () => {
       agentState: 'brooding',
       intent: 'ask about the storm',
       transcript: [{ displayName: 'Mara', content: 'wrong tide' }],
-      reflexAction: 'an old warning',
-      reflexScore: 0.9,
+      ledger: ledgerFixture(),
     });
     assert.ok(prompt.includes('Kettle'));
     assert.ok(prompt.includes('The Tap'));
     assert.ok(prompt.includes('Mara: "wrong tide"'));
     assert.ok(prompt.includes('ask about the storm'));
-    assert.ok(prompt.includes('an old warning'));
+    // The ledger is presented as the room's origin, never as an instruction.
+    assert.ok(prompt.includes("This room's record"));
+    assert.ok(prompt.includes('refuses to speak of drowned'));
+    assert.ok(prompt.includes('I won'));
+    assert.ok(!prompt.includes('you should sound like'));
   });
 
   it('handles an empty transcript with a placeholder', () => {
@@ -159,7 +177,7 @@ describe('buildCompilePrompt', () => {
     assert.ok(prompt.includes('the room is quiet'));
   });
 
-  it('omits the reflex hint when score is zero', () => {
+  it('omits the ledger block entirely when no ledger is supplied', () => {
     const prompt = buildCompilePrompt({
       roomName: 'R',
       roomDescription: 'd',
@@ -167,10 +185,9 @@ describe('buildCompilePrompt', () => {
       agentState: 's',
       intent: 'i',
       transcript: [],
-      reflexAction: 'should not appear',
-      reflexScore: 0,
+      ledger: null,
     });
-    assert.ok(!prompt.includes('should not appear'));
+    assert.ok(!prompt.includes('ledger'));
   });
 });
 

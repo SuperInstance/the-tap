@@ -99,6 +99,11 @@ MAX_CONVERSATION_LINES = "200"
 PINCHER_EXECUTE_THRESHOLD = "0.90"
 PINCHER_CONFIRM_THRESHOLD = "0.60"
 JEPA_VECTOR_DIMS = "512"
+# COMPILE_MODEL — Workers AI text model used for MODEL-tier reply
+# compilation (values-ledger-grounded). Default when unset:
+# @cf/meta/llama-3.1-8b-instruct. An invalid value never crashes the room —
+# the binding error degrades that turn to the HYBRID template.
+# COMPILE_MODEL = "@cf/meta/llama-3.1-8b-instruct"
 
 # ──────────────────────────────────────────────
 # Secrets (set via: wrangler secret put <NAME>)
