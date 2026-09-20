@@ -131,7 +131,7 @@ export function runGeneration({ generator, archive, registry, n = 4, recentPiece
   }
 
   const rejected = scored
-    .filter((s) => s !== accepted)
+    .filter((s) => !accepted || s.id !== accepted.id)
     .map((s) => ({
       id: s.id,
       verdict: s.verdict,
