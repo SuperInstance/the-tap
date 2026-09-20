@@ -885,10 +885,14 @@ export class RoomState implements DurableObject {
           break;
         }
 
-        // Ground the compile in the room's values ledger. WAL facts are
-        // not wired to the DO yet — extraction degrades to transcript-only
-        // honestly rather than refusing to run.
-        const ledgerTranscript = this.state.conversation.slice(-20).map((l) => ({
+        // Ground the compile in the room's values ledger. Extraction runs
+        // over the FULL transcript (capped at MAX_CONVERSATION_LINES) so
+        // evidence refs stay stable for the transcript's lifetime — a
+        // sliding slice would rot the indices of monotonic entries while
+        // their quotes stayed true. WAL facts are not wired to the DO yet —
+        // extraction degrades to transcript-only honestly rather than
+        // refusing to run.
+        const ledgerTranscript = this.state.conversation.map((l) => ({
           displayName: l.displayName,
           content: l.content,
           timestamp: l.timestamp,
