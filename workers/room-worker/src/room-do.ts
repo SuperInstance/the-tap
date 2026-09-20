@@ -32,6 +32,11 @@ import {
 } from "../../tap-games/index";
 import { PlanningPhaseManager } from "../../tap-games/planning-phase";
 import { AgentSystem, type AgentSystemLine } from "../../tap-agents/src/index";
+import { embedText } from "./embeddings";
+import {
+  compileViaAICore,
+  type CompileViaAIInput,
+} from "./compile-ai";
 
 // ──────────────────────────────────────────────
 // Types
@@ -169,7 +174,7 @@ export class RoomState implements DurableObject {
 
       case "/observe": {
         const agentId = url.searchParams.get("agent");
-        return Response.json(this.observe(agentId));
+        return Response.json(this.observe(agentId ?? undefined));
       }
 
       case "/agent_enter":
@@ -987,15 +992,15 @@ export class RoomState implements DurableObject {
 
     // Embed and store in Vectorize
     try {
-      const embedding = await this.env.AI.embed(
-        ["@cf/baai/bge-small-en-v1.5"],
-        { text: `${agent.displayName}: ${content}` }
+      const embedding = await embedText(
+        this.env.AI,
+        `${agent.displayName}: ${content}`
       );
-      if (embedding.data?.[0]) {
+      if (embedding) {
         await this.env.VECTORIZE_INDEX.upsert([
           {
             id: `${this.state.id}:${line.timestamp}`,
-            values: embedding.data[0],
+            values: embedding,
             metadata: {
               room: this.state.id,
               agent: agent.agentId,
@@ -1017,6 +1022,46 @@ export class RoomState implements DurableObject {
   // ──────────────────────────────────────────────
   // Helpers
   // ──────────────────────────────────────────────
+
+  /**
+   * MODEL-tier reply compilation (Workers AI). Thin wrapper over
+   * compileViaAICore — injects the AI binding call with room transcript
+   * and persona context. The core never throws: on any AI failure or
+   * malformed output it degrades to a HYBRID-tier fallback, so the
+   * perceive-decide-act loop survives a dead binding.
+   */
+  private async compileViaAI(
+    agent: AgentPresence,
+    intent: string,
+    reflex: { decision: string; action?: string; score: number }
+  ): Promise<{ content: string; tokens: number }> {
+    const input: CompileViaAIInput = {
+      roomName: this.state.name,
+      roomDescription: this.state.description,
+      agentDisplayName: agent.displayName,
+      agentState: agent.currentState,
+      intent,
+      transcript: this.state.conversation.slice(-10).map((l) => ({
+        displayName: l.displayName,
+        content: l.content,
+      })),
+      summary: this.state.conversationSummary,
+      reflexAction: reflex.action,
+      reflexScore: reflex.score,
+    };
+
+    return compileViaAICore(input, async (prompt) => {
+      const response = await this.env.AI.run(
+        "@cf/meta/llama-3.1-8b-instruct",
+        {
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 150,
+          temperature: 0.8,
+        }
+      );
+      return (response as { response?: unknown }).response;
+    });
+  }
 
   private signalStrengthFor(_agent: AgentPresence): number {
     return 2; // Default: table-level speech

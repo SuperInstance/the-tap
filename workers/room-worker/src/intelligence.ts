@@ -9,6 +9,8 @@
  * and socially-aware silence.
  */
 
+import { embedText } from "./embeddings";
+
 // ═══════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════
@@ -569,14 +571,11 @@ export async function findRelevantContext(
   roomId: string
 ): Promise<string | null> {
   try {
-    const embedding = await env.AI.embed(
-      ["@cf/baai/bge-small-en-v1.5"],
-      { text: message }
-    );
+    const embedding = await embedText(env.AI, message);
 
-    if (!embedding.data?.[0]) return null;
+    if (!embedding) return null;
 
-    const results = await env.VECTORIZE_INDEX.query(embedding.data[0], {
+    const results = await env.VECTORIZE_INDEX.query(embedding, {
       topK: 3,
       filter: { room: roomId },
       returnMetadata: true,
@@ -793,14 +792,7 @@ export class PincherClient {
 }
 
 async function envEmbed(ai: Ai, text: string): Promise<number[] | null> {
-  try {
-    const embedding = await ai.embed(["@cf/baai/bge-small-en-v1.5"], {
-      text,
-    });
-    return embedding.data?.[0] ?? null;
-  } catch {
-    return null;
-  }
+  return embedText(ai, text);
 }
 
 // ═══════════════════════════════════════════════

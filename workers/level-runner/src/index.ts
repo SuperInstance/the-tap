@@ -55,7 +55,11 @@ export default {
     // ─── Conversation Search ───────────────────
     if (this.matches(lower, ["search conversation", "what was said", "find mention"])) {
       const query = lower.replace(/.*(?:search|find|what was said about)\s+/, "").replace(/["']/g, "");
-      const results = await env.VECTORIZE_INDEX.query(await this.embed(query, env), {
+      const vector = await this.embed(query, env);
+      if (vector.length === 0) {
+        return { executed: true, output: "(memory search unavailable — embedder unreachable)", taskType: "conversation_search" };
+      }
+      const results = await env.VECTORIZE_INDEX.query(vector, {
         topK: 5,
         returnMetadata: true,
       });
@@ -108,8 +112,13 @@ export default {
   },
 
   async embed(text: string, env: Env): Promise<number[]> {
-    const result = await env.AI.embed(["@cf/baai/bge-small-en-v1.5"], { text });
-    return result.data?.[0] ?? [];
+    try {
+      const result = await env.AI.run("@cf/baai/bge-small-en-v1.5", { text });
+      // Output union includes an async-response variant — read defensively.
+      return (result as { data?: number[][] }).data?.[0] ?? [];
+    } catch {
+      return [];
+    }
   },
 
   timeAgo(timestamp: number | null): string {
