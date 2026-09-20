@@ -35,8 +35,13 @@ import { AgentSystem, type AgentSystemLine } from "../../tap-agents/src/index";
 import { embedText } from "./embeddings";
 import {
   compileViaAICore,
+  resolveCompileModel,
   type CompileViaAIInput,
 } from "./compile-ai";
+import {
+  extractValuesLedger,
+  type ValuesLedger,
+} from "./values-ledger.ts";
 
 // ──────────────────────────────────────────────
 // Types
@@ -92,6 +97,13 @@ export class RoomState implements DurableObject {
   private pulseReader = new JEPAPulseReader();
   private planningManager: PlanningPhaseManager | null = null;
   private agentSystem: AgentSystem | null = null;
+  /**
+   * The room's values ledger — its grounded record of what its people
+   * actually do (lane-l, Casey's correction). Monotonic: accretes across
+   * MODEL-tier turns, never flickers. Kept in DO memory; the transcript
+   * is the source of truth, the ledger is a distillation.
+   */
+  private valuesLedger: ValuesLedger | null = null;
 
   constructor(private ctx: DurableObjectState, private env: Env) {
     this.state = {
@@ -848,46 +860,67 @@ export class RoomState implements DurableObject {
       }
 
       case "MODEL": {
-        // Pincher reflex check first
+        // The pincher reflex no longer possesses the room (lane-l, Casey's
+        // correction). It is scored, demoted to a datum, and enters the
+        // values ledger like any other evidence-grounded entry. The room
+        // deliberates with its instincts instead of being possessed by them.
         const pincher = new PincherClient(this.env);
         const reflex = await pincher.match(decision.intent ?? "");
+        const reflexDatum =
+          reflex.decision !== "ESCALATE" && reflex.action
+            ? { action: reflex.action, score: reflex.score }
+            : null;
 
-        if (reflex.decision === "EXECUTE") {
-          await this.executeAction(agent, reflex.action ?? "...", 0);
-        } else if (reflex.decision === "CONFIRM") {
-          await this.executeAction(agent, reflex.action ?? "...", 0);
-        } else {
-          // Level-runner check
-          const levelRunner = new LevelRunnerClient(this.env);
-          const lrResult = await levelRunner.tryExecute(
-            decision.intent ?? ""
-          );
-
-          if (lrResult.executed) {
-            await this.executeAction(agent, lrResult.output ?? "...", 0);
-          } else {
-            // If we have an action from the tripartite, use it
-            if (decision.action) {
-              await this.executeAction(
-                agent,
-                decision.action,
-                decision.tokens ?? 150
-              );
-            } else {
-              // Workers AI compilation
-              const aiResponse = await this.compileViaAI(
-                agent,
-                decision.intent ?? "",
-                reflex
-              );
-              await this.executeAction(
-                agent,
-                aiResponse.content,
-                aiResponse.tokens
-              );
-            }
-          }
+        // Level-runner check — deterministic, cheap, no deliberation.
+        const levelRunner = new LevelRunnerClient(this.env);
+        const lrResult = await levelRunner.tryExecute(decision.intent ?? "");
+        if (lrResult.executed) {
+          await this.executeAction(agent, lrResult.output ?? "...", 0);
+          break;
         }
+
+        // Tripartite already produced an action — speak it.
+        if (decision.action) {
+          await this.executeAction(agent, decision.action, decision.tokens ?? 150);
+          break;
+        }
+
+        // Ground the compile in the room's values ledger. Extraction runs
+        // over the FULL transcript (capped at MAX_CONVERSATION_LINES) so
+        // evidence refs stay stable for the transcript's lifetime — a
+        // sliding slice would rot the indices of monotonic entries while
+        // their quotes stayed true. WAL facts are not wired to the DO yet —
+        // extraction degrades to transcript-only honestly rather than
+        // refusing to run.
+        const ledgerTranscript = this.state.conversation.map((l) => ({
+          displayName: l.displayName,
+          content: l.content,
+          timestamp: l.timestamp,
+        }));
+        this.valuesLedger = extractValuesLedger({
+          transcript: ledgerTranscript,
+          turn: this.state.conversation.length,
+          summary: this.state.conversationSummary,
+          walFacts: [],
+          reflexEvents: reflexDatum
+            ? [
+                {
+                  action: reflexDatum.action,
+                  triggerLineIndex: Math.max(0, ledgerTranscript.length - 1),
+                  atTurn: this.state.conversation.length,
+                },
+              ]
+            : [],
+          previous: this.valuesLedger ?? undefined,
+          maxEntries: 12,
+        });
+
+        const aiResponse = await this.compileViaAI(
+          agent,
+          decision.intent ?? "",
+          this.valuesLedger
+        );
+        await this.executeAction(agent, aiResponse.content, aiResponse.tokens);
         break;
       }
     }
@@ -1025,15 +1058,16 @@ export class RoomState implements DurableObject {
 
   /**
    * MODEL-tier reply compilation (Workers AI). Thin wrapper over
-   * compileViaAICore — injects the AI binding call with room transcript
-   * and persona context. The core never throws: on any AI failure or
-   * malformed output it degrades to a HYBRID-tier fallback, so the
-   * perceive-decide-act loop survives a dead binding.
+   * compileViaAICore — injects the AI binding call with room transcript,
+   * persona context, and the values ledger. The model rides env.COMPILE_MODEL
+   * with the documented default when unset; an invalid override surfaces as
+   * a binding error and degrades to HYBRID like any other failure. The core
+   * never throws, so the perceive-decide-act loop survives a dead binding.
    */
   private async compileViaAI(
     agent: AgentPresence,
     intent: string,
-    reflex: { decision: string; action?: string; score: number }
+    ledger: ValuesLedger | null
   ): Promise<{ content: string; tokens: number }> {
     const input: CompileViaAIInput = {
       roomName: this.state.name,
@@ -1046,19 +1080,16 @@ export class RoomState implements DurableObject {
         content: l.content,
       })),
       summary: this.state.conversationSummary,
-      reflexAction: reflex.action,
-      reflexScore: reflex.score,
+      ledger,
     };
 
+    const model = resolveCompileModel(this.env);
     return compileViaAICore(input, async (prompt) => {
-      const response = await this.env.AI.run(
-        "@cf/meta/llama-3.1-8b-instruct",
-        {
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 150,
-          temperature: 0.8,
-        }
-      );
+      const response = await this.env.AI.run(model, {
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 150,
+        temperature: 0.8,
+      });
       return (response as { response?: unknown }).response;
     });
   }
@@ -1222,6 +1253,7 @@ interface Env {
   PINCHER: Fetcher;
   LEVEL_RUNNER: Fetcher;
   MAX_CONVERSATION_LINES: string;
+  COMPILE_MODEL?: string;
   DEEPINFRA_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
 }
