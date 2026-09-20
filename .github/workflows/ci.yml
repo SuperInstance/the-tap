@@ -34,3 +34,21 @@ jobs:
         continue-on-error: true
       - name: Run tests
         run: cargo test --all --verbose
+
+  # Minimal TypeScript gate: the tree must typecheck under strict mode.
+  # (The landmine fixes in this branch made workers/ tsc-clean; this job
+  # keeps them that way.)
+  typecheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck (noEmit)
+        run: npx tsc --noEmit

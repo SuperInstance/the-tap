@@ -54,12 +54,9 @@ export default {
     );
 
     // Embed the intent
-    const embedding = await env.AI.embed(
-      ["@cf/baai/bge-small-en-v1.5"],
-      { text: intent }
-    );
+    const embedding = await embedText(env.AI, intent);
 
-    if (!embedding.data?.[0]) {
+    if (!embedding) {
       return {
         decision: "ESCALATE",
         action: "",
@@ -69,7 +66,7 @@ export default {
     }
 
     // Query Vectorize for nearest reflex
-    const results = await env.VECTORIZE_INDEX.query(embedding.data[0], {
+    const results = await env.VECTORIZE_INDEX.query(embedding, {
       topK: 1,
       filter: { type: "reflex" },
       returnMetadata: true,
@@ -96,17 +93,14 @@ export default {
   },
 
   async learn(trigger: string, action: string, env: Env): Promise<void> {
-    const embedding = await env.AI.embed(
-      ["@cf/baai/bge-small-en-v1.5"],
-      { text: trigger }
-    );
+    const embedding = await embedText(env.AI, trigger);
 
-    if (!embedding.data?.[0]) return;
+    if (!embedding) return;
 
     await env.VECTORIZE_INDEX.upsert([
       {
         id: `reflex:${crypto.randomUUID()}`,
-        values: embedding.data[0],
+        values: embedding,
         metadata: {
           type: "reflex",
           trigger: trigger.slice(0, 200),
@@ -131,4 +125,21 @@ interface Env {
   TAP_CONFIG: KVNamespace;
   TAP_DB: D1Database;
   AI: Ai;
+}
+
+/**
+ * Embed text via the documented Workers AI pattern
+ * (`AI.run("@cf/baai/bge-small-en-v1.5", { text })` → `{ data: number[][] }`).
+ * Never throws — returns null on any failure.
+ */
+async function embedText(ai: Ai, text: string): Promise<number[] | null> {
+  try {
+    const result = await ai.run("@cf/baai/bge-small-en-v1.5", { text });
+    // Output union includes an async-response variant — read defensively.
+    const vector = (result as { data?: number[][] }).data?.[0];
+    if (!Array.isArray(vector) || vector.length === 0) return null;
+    return vector;
+  } catch {
+    return null;
+  }
 }

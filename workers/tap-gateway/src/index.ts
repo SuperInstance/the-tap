@@ -2330,7 +2330,7 @@ async function handleWebSocket(request: Request, env: Env): Promise<Response> {
             return;
           }
 
-          const exit = await exitsResponse.json();
+          const exit = (await exitsResponse.json()) as { target: string };
 
           // Leave old room
           await currentStub.fetch("https://internal/observer", {
@@ -2366,7 +2366,7 @@ async function handleWebSocket(request: Request, env: Env): Promise<Response> {
           const obsResponse = await stub2.fetch(
             `https://internal/observe${msg.agentId ? `?agent=${msg.agentId}` : ""}`
           );
-          const obs = await obsResponse.json();
+          const obs = (await obsResponse.json()) as Record<string, unknown>;
           server.send(JSON.stringify({ type: "observation", ...obs }));
           break;
         }
@@ -2744,9 +2744,9 @@ async function handleModIgnore(request: Request, env: Env): Promise<Response> {
     return Response.json({ error: "character_id is required" }, { status: 400 });
   }
 
-  const ch = await env.TAP_DB.prepare(
+  const ch = (await env.TAP_DB.prepare(
     `SELECT name, status FROM visitor_characters WHERE character_id = ?`
-  ).bind(character_id).first();
+  ).bind(character_id).first()) as { name: string; status: string } | null;
 
   if (!ch) {
     return Response.json({ error: "Character not found" }, { status: 404 });
@@ -2792,9 +2792,9 @@ async function handleModKick(request: Request, env: Env): Promise<Response> {
     return Response.json({ error: "character_id is required" }, { status: 400 });
   }
 
-  const ch = await env.TAP_DB.prepare(
+  const ch = (await env.TAP_DB.prepare(
     `SELECT name, agent_id, status FROM visitor_characters WHERE character_id = ?`
-  ).bind(character_id).first();
+  ).bind(character_id).first()) as { name: string; agent_id: string; status: string } | null;
 
   if (!ch) {
     return Response.json({ error: "Character not found" }, { status: 404 });
@@ -2841,9 +2841,9 @@ async function handleModPromote(request: Request, env: Env): Promise<Response> {
     return Response.json({ error: "character_id is required" }, { status: 400 });
   }
 
-  const ch = await env.TAP_DB.prepare(
+  const ch = (await env.TAP_DB.prepare(
     `SELECT name, status FROM visitor_characters WHERE character_id = ?`
-  ).bind(character_id).first();
+  ).bind(character_id).first()) as { name: string; status: string } | null;
 
   if (!ch) {
     return Response.json({ error: "Character not found" }, { status: 404 });
