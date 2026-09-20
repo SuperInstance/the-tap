@@ -49,7 +49,8 @@ v1 (open question 29).
   1 exists (verified). Flagged in the production log — delete, annotate,
   or keep as a monument.
 - `PRODUCTION-LOG.md` is round-1 stale relative to a tree carrying
-  migrations through 0010 and ~15 audit rounds — rewrite or delete before
+  migrations through 0010 and ~15 audit rounds — rewrite in place, or move
+  it to `docs/achieved/` (Casey's rule: never delete, only relocate) before
   Fable's round 10.
 
 ## For agents picking this up
