@@ -296,6 +296,12 @@ async function runMode(mode, n = 20) {
       maxEntries: 12,
     });
     pendingReflexEvents = [];
+    for (const e of [...ledger.entries, ...(ledger.dormant ?? [])]) {
+      if (e.id.includes('foghorns')) {
+        const where = ledger.entries.some((a) => a.id === e.id) ? 'A' : 'D';
+        console.error(`TRACE ${mode} t${turn} ${e.id}[${where}] s=${e.strength} ev=${e.evidence.length} demotedTurn=${e.demotedTurn}`);
+      }
+    }
     ledgerSnapshots.push({
       truncated: ledger.truncated,
       active: ledger.entries.map((e) => ({
@@ -366,7 +372,6 @@ async function runMode(mode, n = 20) {
     reflexFirings,
     loopRecoveries,
     summaryLengths,
-    allReflexEvents,
   };
 }
 

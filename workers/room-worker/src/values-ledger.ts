@@ -82,10 +82,21 @@ export interface LedgerEntry {
   lastSeenTurn: number;
   /** 0..1 — accretes with repeated evidence, never decreases on merge. */
   strength: number;
+  /** Turn at which this entry was demoted to dormant. Revival requires a
+   *  fresh candidate (the transcript re-yielding this value) in a LATER
+   *  turn — dormant entries never re-enter competition on old strength
+   *  alone. Absent on active entries. */
+  demotedTurn?: number;
 }
 
 export interface ValuesLedger {
   entries: LedgerEntry[];
+  /** Values demoted by the active cap. They persist here with their
+   *  evidence intact — the ledger never deletes a value, it only moves
+   *  it out of the room's active voice. A dormant entry re-enters the
+   *  active pool if it accrues NEW evidence (a fresh candidate with the
+   *  same id). Whole-ledger id set is monotonic non-decreasing. */
+  dormant: LedgerEntry[];
   /** True when cap eviction dropped entries — the ledger is lossy by force. */
   truncated: boolean;
 }
@@ -384,8 +395,14 @@ export function extractValuesLedger(input: ExtractLedgerInput): ValuesLedger {
     // an ungrounded entry must never reach the ledger.
     candidates = candidates.filter((c) => c.evidence.length > 0);
 
-    // Merge with previous ledger (monotonic accretion).
+    // Merge with previous ledger (monotonic accretion). Active previous
+    // entries join the competition directly. DORMANT previous entries do
+    // NOT: a sleeping value competes only if the transcript re-yields it
+    // this turn (a fresh candidate with the same id arriving below).
+    // Without a fresh candidate, old strength alone must never win back a
+    // slot — that bounce is the flicker the commune harness forbids.
     const merged = new Map<string, LedgerEntry>();
+    const sleeping = new Map<string, LedgerEntry>();
     if (input.previous && Array.isArray(input.previous.entries)) {
       for (const old of input.previous.entries) {
         if (old && old.id && Array.isArray(old.evidence) && old.evidence.length > 0) {
@@ -393,7 +410,22 @@ export function extractValuesLedger(input: ExtractLedgerInput): ValuesLedger {
         }
       }
     }
+    if (input.previous && Array.isArray(input.previous.dormant)) {
+      for (const old of input.previous.dormant) {
+        if (old && old.id && Array.isArray(old.evidence) && old.evidence.length > 0) {
+          sleeping.set(old.id, { ...old, evidence: [...old.evidence] });
+        }
+      }
+    }
     for (const c of candidates) {
+      const dormant = sleeping.get(c.id);
+      if (dormant) {
+        // The transcript re-yielded this value — it wakes and competes,
+        // carrying its history. Accretion happens through the normal
+        // candidate path below (pushEvidence dedupes by (source, ref)).
+        sleeping.delete(c.id);
+        merged.set(dormant.id, dormant);
+      }
       const existing = merged.get(c.id);
       if (existing) {
         for (const ev of c.evidence) pushEvidence(existing, ev, turn);
@@ -417,13 +449,41 @@ export function extractValuesLedger(input: ExtractLedgerInput): ValuesLedger {
         b.strength - a.strength || a.firstSeenTurn - b.firstSeenTurn
     );
     const truncated = all.length > maxEntries;
-    const entries = all.slice(0, maxEntries);
-    return { entries, truncated };
+    const active = all.slice(0, maxEntries);
+    for (const e of active) delete e.demotedTurn;
+    const activeIds = new Set(active.map((e) => e.id));
+
+    // Demote — never delete. Freshly evicted entries stamp demotedTurn=now;
+    // anything that competed and lost gets a fresh demotion stamp (its old
+    // demotedTurn may predate this turn's evidence). Untouched sleepers
+    // keep their original demotedTurn — their sentence continues.
+    const DORMANT_CAP = maxEntries * 4;
+    const dormantPool = new Map<string, LedgerEntry>();
+    for (const d of sleeping.values()) {
+      if (d.demotedTurn === undefined) d.demotedTurn = turn;
+      dormantPool.set(d.id, d);
+    }
+    for (const e of all.slice(maxEntries)) {
+      e.demotedTurn = turn;
+      dormantPool.set(e.id, e);
+    }
+    for (const id of [...dormantPool.keys()]) {
+      if (activeIds.has(id)) dormantPool.delete(id);
+    }
+    const dormant = [...dormantPool.values()]
+      .sort((a, b) => a.firstSeenTurn - b.firstSeenTurn)
+      .slice(0, DORMANT_CAP);
+
+    return { entries: active, dormant, truncated };
   } catch {
     // Total failure — the constitution persists even when the clerk is sick.
     return input.previous
-      ? { entries: [...input.previous.entries], truncated: input.previous.truncated }
-      : { entries: [], truncated: false };
+      ? {
+          entries: [...input.previous.entries],
+          dormant: [...(input.previous.dormant ?? [])],
+          truncated: input.previous.truncated,
+        }
+      : { entries: [], dormant: [], truncated: false };
   }
 }
 
@@ -442,7 +502,7 @@ export function verifyLedgerAgainstSources(
   const walById = new Map(walFacts.map((f) => [f.id, f]));
   const reflexActions = new Set(reflexEvents.map((e) => e.action));
 
-  for (const entry of ledger.entries) {
+  for (const entry of [...ledger.entries, ...(ledger.dormant ?? [])]) {
     if (!entry.evidence || entry.evidence.length === 0) {
       violations.push(`${entry.id}: entry has no evidence`);
       continue;
