@@ -110,6 +110,13 @@ Every conversation is logged as campaign history. Agents reference past events. 
 ### The Reflex Shell (Pincher)
 Common interaction patterns compile into reflexes — instantaneous responses that cost zero tokens. The system learns which responses work and caches them for reuse.
 
+### Negative-Space GAN Mode
+A generation mode where the objective is **novelty inside the ring of survival**, not quality on the writer's own scale — the MAP-Elites novelty gate turned from defense into objective (design: [AI-Writings@quilted-reality `docs/NEGATIVE-SPACE-GAN.md`](https://github.com/SuperInstance/AI-Writings/blob/quilted-reality/docs/NEGATIVE-SPACE-GAN.md) @2c60f314, Lane AE / Casey 17:12–13 doctrine; extends the Red Queen archive + critic design from [PR #6](https://github.com/SuperInstance/the-tap/pull/6)).
+
+> **The design law, quoted from the doc:** (1) *Generator/critic with value-disjoint scoring — the critic's instrument must not be the generator's metric.* (2) *Multiplicative viability floor: ethos gate ∈ {0,1} — zero ethos sunsets the candidate regardless of novelty (anti-dada). Novelty is the objective, viability is the constraint.* (3) *Negative space = archive cells never occupied; filling an empty cell is the win condition.* (4) *Critic rotation + held-out critic (K≥2 variants; unknowability is the resistance).* (5) *Honest-null is valid: if the viable manifold's empty regions can't be reached this generation, the mode says so instead of hallucinating novelty.* (6) *Niche-flooding limit: a cell accepts at most m occupants before it's "settled."*
+
+Runnable pure modules under `workers/room-worker/src/negative-space/` (no Cloudflare bindings): `termvector.mjs` (64-slot FNV-1a archive substrate, candor lineage), `archive.mjs` (negative-space MAP-Elites grid, settled-cap, monotonic inserts), `floor.mjs` (binary ethos gate), `generator.mjs` (deterministic room stand-in + its own quality metric), `critics.mjs` (K≥2 rotation + held-out critic, value-disjoint structural rubrics), `scoring.mjs` (`score = novelty × viability`, named rejection taxonomy), `null.mjs` (the honest negative — the map IS the artifact). Demo: `node workers/room-worker/src/negative-space/demo.mjs`. Tests: `node --test tests/negative-space-gan.test.mjs` (21 tests pinning all six laws).
+
 ---
 
 ## Documentation
