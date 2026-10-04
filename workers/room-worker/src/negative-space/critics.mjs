@@ -107,16 +107,21 @@ export function createCriticRegistry({ variants, heldOutIds = [] } = {}) {
   /**
    * verdict(piece, recentPieces) → { score, criticId, expertise, rubric }.
    * score = 1 − max rubric-space cosine similarity to the recent window
-   * (difference-with-teeth). Computed ONLY in the active critic's rubric.
+   * (difference-with-teeth): i.e. the distance to the MOST SIMILAR recent
+   * piece — a near-copy of ANY recent piece scores low, no matter how
+   * different the rest of the window is. Computed ONLY in the active
+   * critic's rubric. (An earlier version took the max distance, which let
+   * an exact duplicate of one recent piece score 1 whenever the window
+   * also held a very different piece — edge-hunt pin.)
    */
   function verdict(piece, recentPieces = []) {
     const critic = active();
     if (!critic) return { score: 0, criticId: null, reason: 'insufficient-critic-variants' };
     const v = critic.rubric(piece);
-    let nearest = 0;
+    let nearest = Infinity;
     for (const prev of recentPieces) {
       const d = distance(v, critic.rubric(prev));
-      if (d > nearest) nearest = d; // nearest = max distance = most different
+      if (d < nearest) nearest = d; // nearest = distance to the most-similar recent piece
     }
     const score = recentPieces.length === 0 ? 1 : Math.round(nearest * 1000) / 1000;
     return { score, criticId: critic.id, expertise: critic.expertise, rubric: v };
