@@ -49,7 +49,12 @@ export function scoreCandidate({ candidate, archive, registry, recentPieces = []
     if (nearestOccupied === null || dCell < nearestOccupied) nearestOccupied = dCell;
     const acc = new Array(64).fill(0);
     for (const o of occ.occupants) for (let i = 0; i < 64; i++) acc[i] += o.vector[i];
-    const centroid = acc.map((v) => v / (occ.occupants.length || 1));
+    // L2-normalize the centroid before the cosine read — an unnormalized
+    // multi-occupant centroid shrinks as occupants disagree and inflates
+    // the distance (must match archive.insert's normalized gate).
+    const raw = acc.map((v) => v / (occ.occupants.length || 1));
+    const cnorm = Math.sqrt(raw.reduce((s, v) => s + v * v, 0));
+    const centroid = cnorm === 0 ? raw : raw.map((v) => v / cnorm);
     const d = cosineDistance(vector, centroid);
     if (centroidDistance === null || d < centroidDistance) centroidDistance = d;
   }

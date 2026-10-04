@@ -409,3 +409,71 @@ describe('generation taxonomy + demo', () => {
     assert.match(out, /"kind": "honest-null-report"/);
   });
 });
+
+// ──────────────────────────────────────────────
+// 22–25. EDGE-HUNT PINS (lane 2026-10-03: settle-cap boundary, critic
+// nearest-neighbor, centroid normalization). FAIL-first: every pin below
+// trips on the pre-fix modules.
+// ──────────────────────────────────────────────
+
+describe('edge-hunt: settle-cap boundary (early/late settle)', () => {
+  it('settled cap 0 refuses even the first insert — an empty cell cannot bypass the cap', () => {
+    const archive = createNegativeSpaceArchive({ gridSize: 4, settledCap: 0 });
+    const r = archive.insert(piece({ id: 'first' }));
+    assert.equal(r.inserted, false, 'cap 0 must refuse');
+    assert.equal(r.refused, 'settled');
+  });
+
+  it('a cell filled to the cap by its FIRST occupant is settled (status matches count, cap=1)', () => {
+    const archive = createNegativeSpaceArchive({ gridSize: 4, settledCap: 1 });
+    const r = archive.insert(piece({ id: 'solo' }));
+    assert.equal(r.inserted, true);
+    const cell = archive.getCell(r.cell);
+    assert.equal(cell.occupants.length, 1);
+    assert.equal(cell.status, 'settled', '1 occupant at cap 1 ⇒ settled, not open');
+    // and the rejection taxonomy names the flooding limit, not a niche call:
+    const s = scoreCandidate({
+      candidate: piece({ id: 'challenger', text: 'the tide keeps the salt honest undertow moonpull.' }),
+      archive,
+      registry: createCriticRegistry(),
+    });
+    assert.equal(s.verdict, 'settled');
+  });
+});
+
+describe('edge-hunt: critic distance is nearest-neighbor (docstring 1 − max similarity)', () => {
+  it('an exact duplicate of a recent piece scores LOW even when the window also holds a very different piece', () => {
+    const reg = createCriticRegistry({ heldOutIds: ['cadence'] }); // argument-shape active
+    const A = piece({ id: 'A', text: 'the tide keeps the salt. the harbor holds the wake.' });
+    const B = piece({ id: 'B', text: 'what storm? what pressure? what eye keeps this gale?' });
+    const dupA = piece({ id: 'dupA', text: A.text });
+    const v = reg.verdict(dupA, [A, B]);
+    assert.ok(v.score < 0.3, `duplicate must score low, got ${v.score}`);
+    // control: a genuinely different piece still scores high (pure witness-form:
+    // orthogonal to A's all-assertion AND B's all-question shapes in the
+    // ACTIVE critic's rubric space — nearest distance to either is 1)
+    const C = piece({ id: 'C', text: 'the witness logged the salt. the witness heard the harbor.' });
+    const vC = reg.verdict(C, [A, B]);
+    assert.ok(vC.score > 0.3, `distinct piece must score high, got ${vC.score}`);
+  });
+});
+
+describe('edge-hunt: multi-occupant niche check uses true cosine distance (centroid L2-normalized)', () => {
+  it('an exact copy of an incumbent is refused in a 2-occupant cell (unnormalized centroid used to inflate d past θ)', () => {
+    // gridSize 1 forces one cell; two dissimilar occupants; then an exact
+    // copy of occupant 1. True cosine distance to the incumbent is 0 — the
+    // niche-duplicate gate must fire no matter how the cell fills.
+    const archive = createNegativeSpaceArchive({ gridSize: 1, settledCap: 5, noveltyThreshold: 0.2 });
+    const o1 = piece({ id: 'o1', text: 'tide undertow moonpull salt drowned harbor wake sounding' });
+    const o2 = piece({ id: 'o2', text: 'ledger sealed hash lineage evidence witness entry weakerwater' });
+    assert.equal(archive.insert(o1).inserted, true);
+    assert.equal(archive.insert(o2).inserted, true);
+    const twin = piece({ id: 'twin', text: o1.text });
+    const r = archive.insert(twin);
+    assert.equal(r.inserted, false, 'exact copy of an incumbent must not be admitted');
+    assert.equal(r.refused, 'niche-duplicate');
+    // scoring side reports the same true distance (centroid normalized there too)
+    const s = scoreCandidate({ candidate: twin, archive, registry: createCriticRegistry() });
+    assert.ok(s.centroidDistance < 0.2, `scored centroidDistance must be the true cosine distance, got ${s.centroidDistance}`);
+  });
+});

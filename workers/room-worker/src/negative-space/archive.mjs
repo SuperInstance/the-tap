@@ -106,12 +106,16 @@ export function createNegativeSpaceArchive({
     const cell = cellForAxes(axes, gridSize);
     const entry = getCell(cell);
 
-    if (entry && entry.occupants.length >= settledCap) {
+    // The cap binds EMPTY cells too: a first insert counts against it. (An
+    // earlier version only checked cells that already existed, so cap 0
+    // admitted one occupant per cell and cap 1 left filled cells "open".)
+    const existingCount = entry ? entry.occupants.length : 0;
+    if (existingCount >= settledCap) {
       return {
         inserted: false,
         refused: 'settled',
         cell,
-        reason: `cell ${cell} is settled (${entry.occupants.length}/${settledCap} occupants)`,
+        reason: `cell ${cell} is settled (${existingCount}/${settledCap} occupants)`,
       };
     }
 
@@ -141,7 +145,9 @@ export function createNegativeSpaceArchive({
       entry.occupants.push(record);
       if (entry.occupants.length >= settledCap) entry.status = 'settled';
     } else {
-      cells.set(key(cell), { occupants: [record], status: 'open' });
+      // A cell opened at (or past) the cap is settled immediately — a
+      // first occupant that already fills the cell must not read "open".
+      cells.set(key(cell), { occupants: [record], status: settledCap <= 1 ? 'settled' : 'open' });
     }
     return { inserted: true, cell, opensNewCell, occupantCount: getCell(cell).occupants.length };
   }
@@ -156,9 +162,19 @@ export function createNegativeSpaceArchive({
   }
 
   function cosineDistanceLocal(a, b) {
+    // True cosine distance: b (an incumbent centroid) is L2-normalized
+    // before the dot. An unnormalized centroid shrinks as occupants
+    // disagree, which inflates the distance and silently dissolves the
+    // niche-duplicate gate exactly when a cell fills (edge-hunt pin).
     let dot = 0;
-    for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
-    return Math.min(1, Math.max(0, 1 - dot));
+    let nb = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      nb += b[i] * b[i];
+    }
+    const norm = Math.sqrt(nb);
+    if (norm === 0) return 1;
+    return Math.min(1, Math.max(0, 1 - dot / norm));
   }
 
   function emptyCellCount() {
